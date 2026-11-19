@@ -1,0 +1,6 @@
+# The reader, step loop and most tests need only the standard library.
+# These are for the Gymnasium wrapper, training and controller output (Windows).
+gymnasium
+stable-baselines3
+torch
+vgamepad
