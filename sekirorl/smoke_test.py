@@ -3,6 +3,7 @@
     python -m sekirorl.smoke_test --pid <sekiro pid>
     python -m sekirorl.smoke_test --pid <sekiro pid> --dry-run        (no controller output)
     python -m sekirorl.smoke_test --pid <sekiro pid> --candidates     (also show unverified reads)
+    python -m sekirorl.smoke_test --pid <sekiro pid> --hold-guard 30  (hard-kill release test)
 
 Load a save first. During the countdown, click the game window so it has focus.
 Reads are query/read only; the only output is a virtual Xbox 360 pad.
@@ -92,6 +93,9 @@ def main():
                         help="record controller output instead of sending it")
     parser.add_argument("--candidates", action="store_true",
                         help="also print unverified candidate reads and press-to-animation delay")
+    parser.add_argument("--hold-guard", type=float, default=0.0, metavar="SECONDS",
+                        help="instead of stepping, hold guard this long so you can kill "
+                             "this process and see whether the game releases guard")
     parser.add_argument("--no-focus-check", action="store_true",
                         help="send input even when the game window is not in the foreground")
     args = parser.parse_args()
@@ -124,6 +128,15 @@ def main():
         pid, title = foreground_window()
         print(f'Foreground window: "{title}" (pid {pid}) -> '
               + ("game has focus" if pid == args.pid else "GAME DOES NOT HAVE FOCUS"))
+
+        if args.hold_guard > 0:
+            import os
+            controller.apply(ControlState(buttons=frozenset({"guard"})))
+            print(f"Holding guard for {args.hold_guard:.0f} s. To test a hard kill, run in "
+                  f"another window:  taskkill /F /PID {os.getpid()}")
+            time.sleep(args.hold_guard)
+            print("Not killed; releasing guard normally.")
+            return
 
         loop = StepLoop(source, controller, RealClock(), step_interval=args.interval,
                         max_steps=args.warmup + args.after + 10,

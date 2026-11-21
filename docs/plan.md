@@ -10,8 +10,8 @@ validation procedure is in [`../MEMORY_READER.md`](../MEMORY_READER.md); project
 
 | Stage | Outcome | Gate | Status |
 |---|---|---|---|
-| 1 | Environment modules: memory, controller, actions, timing, Gymnasium wrapper, fake game | G01 | Awaiting packages (Gymnasium wrapper and `vgamepad` controller unrun) |
-| 2 | Loop proven: automated tests, `check_env`, Windows smoke test against the live game | G02 | Awaiting user: package install and live smoke run |
+| 1 | Environment modules: memory, controller, actions, timing, Gymnasium wrapper, fake game | G01 | Completed (approved 2026-11-18) |
+| 2 | Loop proven: automated tests, `check_env`, Windows smoke test against the live game | G02 | Completed (approved 2026-11-18) |
 | 3 | Memory fields found and verified: player state, boss object, boss state | G03 | Not started |
 | 4 | Repeatable encounter: start, death, victory, automatic reset, scripted deflect | G04 | Not started |
 | 5 | Demonstrations recorded and a behaviour-cloned policy | G05 | Not started |
@@ -102,7 +102,7 @@ and write a new `handoffs/current.md` for the next stage.
 
 #### S01-T03 — Controller output
 
-- [ ] **Status: In progress** (recording controller tested; `vgamepad` controller never run, package not installed)
+- [x] **Status: Completed** (virtual pad seen acting in the game by the user, 2026-11-18)
 - **Purpose:** Send complete pad states, with nothing held outside the last state sent.
 - **Prerequisites:** None.
 - **Actions:** `ControlState`; a recording controller for tests; a `vgamepad` controller that
@@ -138,7 +138,7 @@ and write a new `handoffs/current.md` for the next stage.
 
 #### S01-T06 — Gymnasium wrapper
 
-- [ ] **Status: In progress** (wrapper test and Gymnasium's own `check_env` pass on Windows with Gymnasium 1.4.0, 2026-11-18; Stable-Baselines3 `check_env` still to run)
+- [x] **Status: Completed** (wrapper test, Gymnasium `check_env` and Stable-Baselines3 `check_env` pass on Windows, 2026-11-18)
 - **Purpose:** Expose the loop as a standard environment with fixed spaces.
 - **Prerequisites:** S01-T05.
 - **Actions:** `SekiroEnv` with a `Box` observation space and a `Discrete` action space.
@@ -194,7 +194,7 @@ for it separately.
 
 #### S02-T03 — Install packages and run `check_env`
 
-- [ ] **Status: Blocked** (`requirements.txt` and `tests/test_env.py` written; both tests skip until the packages are installed)
+- [x] **Status: Completed** (gymnasium 1.4.0, stable-baselines3 2.9.2, torch 2.15.0 CPU build, vgamepad 0.2.0 on Windows Python 3.15; all 47 tests pass with no skips, 2026-11-18)
 - **Purpose:** Confirm the wrapper is a valid environment.
 - **Prerequisites:** S01-T06; packages installed on Windows.
 - **Actions:** Add `requirements.txt`; the user installs `gymnasium`, `stable-baselines3`,
@@ -218,7 +218,7 @@ for it separately.
 
 #### S02-T05 — Live smoke run
 
-- [ ] **Status: Not started** (needs the user and the running game)
+- [x] **Status: Completed** (2026-11-18: user saw both attacks; guard held in game and released when the Python process was killed)
 - **Purpose:** First end-to-end proof.
 - **Prerequisites:** S02-T03, S02-T04; ViGEmBus driver installed.
 - **Actions:** Run the smoke test with a save loaded; record step lateness and the
@@ -242,11 +242,11 @@ for it separately.
 #### Gate G02
 
 **User checks:**
-- [ ] Automated tests pass on your Windows Python.
-- [ ] `check_env` passes.
-- [ ] In game, the smoke test's action visibly happens once and nothing stays held afterwards.
+- [x] Automated tests pass on your Windows Python.
+- [x] `check_env` passes.
+- [x] In game, the smoke test's action visibly happens once and nothing stays held afterwards.
 - [ ] The HP printed matches the health bar.
-- [ ] Killing the script while guard is held releases guard.
+- [x] Killing the script while guard is held releases guard.
 - [ ] Step lateness and press-to-animation delay are acceptable for a 100 ms step.
 
 ### Stage 3 — Memory fields
@@ -257,7 +257,7 @@ SHA256 and mods.
 
 #### S03-T01 — Discovery setup
 
-- [ ] **Status: Not started**
+- [x] **Status: Completed** (2026-11-20; list in `MEMORY_READER.md`)
 - **Purpose:** A safe, repeatable Cheat Engine session.
 - **Prerequisites:** G02; the Cheat Engine connection from the user.
 - **Actions:** Confirm which operations the connection exposes and that none used here write
@@ -268,7 +268,7 @@ SHA256 and mods.
 
 #### S03-T02 — Finish validating player HP
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (one session logged 2026-11-20; restarts and rematch checks open)
 - **Purpose:** Close the gaps left by the first session log.
 - **Prerequisites:** S03-T01.
 - **Actions:** Observe HP at death, after resurrection and rest, across area reloads and
@@ -280,7 +280,7 @@ SHA256 and mods.
 
 #### S03-T03 — Player posture, position and animation
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (one session logged 2026-11-20; restarts and rematch checks open)
 - **Purpose:** Promote the player candidates to verified.
 - **Prerequisites:** S03-T02.
 - **Actions:** Check each candidate chain against behaviour: posture direction and range,
@@ -291,7 +291,7 @@ SHA256 and mods.
 
 #### S03-T04 — In-game time and death counter
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (one session logged 2026-11-20; restarts and rematch checks open)
 - **Purpose:** A liveness signal and an independent death signal.
 - **Prerequisites:** S03-T01.
 - **Actions:** Check that in-game time advances in play and stops when paused; check whether
@@ -593,12 +593,16 @@ SHA256 and mods.
 | 2026-11-18 | Plan | Feasibility report written (`../Plan.md`); approach reviewed by four reviewers; D1–D10 agreed. |
 | 2026-11-18 | Stage 1 | Modules written and syntax-checked. No test suite run. Paused at the user's request. |
 | 2026-11-18 | S01-T06 | Gymnasium 1.4.0 and numpy 2.5.5 installed on Windows Python 3.15. Wrapper test and Gymnasium `check_env` pass; 46 pass, 1 skipped (Stable-Baselines3). |
+| 2026-11-18 | S02-T03 | All packages installed on Windows. 47 tests pass, none skipped. Virtual pad connects, so the ViGEmBus driver is present. PyTorch is the CPU build. |
+| 2026-11-18 | S02-T05 | First live run by the user. Executable SHA256 `637aca527538c0ec6e1f136c8ed66046e95dfbdbb1f51926e134d9916398b856`, base `0x140000000`. Player HP 320/320 read through the refactored reader. Dry run without focus: every step invalid and truncated after 5, as designed. Focused run: 31 steps at 100 ms, lateness max 0.01 ms, read about 0.1 ms, no overruns. Attack sent as press at +0.4 ms and release at +50.1 ms. Press-to-animation delay 56.9 ms (animation ID 790010 → 790040, candidate chain). Candidate reads all resolved with plausible values: posture 120/120, position (160.3, −28.9, 22.4), animation 790010 at 3.10 s, in-game time 9,763,418 ms, death count 5. None verified against behaviour yet. |
+| 2026-11-18 | S02-T05 | User confirmed: the character attacked twice (stepped run and delay measurement); `--hold-guard` made the character guard; killing the Python process with `taskkill /F` released guard. Sekiro accepts the virtual pad. |
 | 2026-11-18 | Stages 1–2 | Resumed. 47 tests: 45 pass, 2 skipped (need Gymnasium / Stable-Baselines3), on Windows Python 3.15 and WSL Python 3.14. Smoke test dry-run on Windows with a stubbed process. Nothing run against the game. Stopped at G02 for the user. |
+| 2026-11-20 | Stage 3 | Started; paused by the user before the rematch. S03-T01 completed: Cheat Engine connection checked, allowed operations listed, HP matched the Python reader (320/320). Live, one session, no restart: player HP (0 at death), posture (counts down from 120), position and the death counter behave as expected. In-game time does not stop in the pause menu. The animation candidate was wrong; the current animation is read from a ring in the TimeAct module, which also serves as a pause check. The character collection inside WorldChrMan was mapped; the NPC ID candidate `30, 628` is wrong and character `+0x68` is used instead. Boss not yet examined. No code changed; automated tests not re-run. Details in `MEMORY_READER.md`. |
 
 | Gate | Approved by user | Note |
 |---|---|---|
-| G01 | — | |
-| G02 | — | |
+| G01 | 2026-11-18 | Reported and approved together with G02. |
+| G02 | 2026-11-18 | Approved after the live smoke run. The 30-action list was presented and not objected to. HP was confirmed at full health only in this run. |
 | G03 | — | |
 | G04 | — | |
 | G05 | — | |
