@@ -122,15 +122,25 @@ class StepLoop:
         self._held = NEUTRAL
 
     def _check(self, snapshot):
-        """Return (valid, reason). Missing HP or frozen in-game time is invalid."""
+        """Return (valid, reason). Missing HP or a game that is not advancing is invalid.
+
+        The frame token stands still in the pause menu; in-game time stands
+        still in loading screens. Either one not moving means no step happened.
+        """
         if not snapshot.valid:
             return False, snapshot.reason or "player HP unavailable"
+        reason = None
         last = self._last_igt
         if snapshot.igt_ms is not None:
             self._last_igt = snapshot.igt_ms
             if last is not None and snapshot.igt_ms <= last:
-                return False, "in-game time not advancing"
-        return True, None
+                reason = "in-game time not advancing"
+        last = self._last_token
+        if snapshot.frame_token is not None:
+            self._last_token = snapshot.frame_token
+            if reason is None and last is not None and snapshot.frame_token == last:
+                reason = "game frame not advancing (paused)"
+        return reason is None, reason
 
     def _summary(self):
         elapsed = self.clock.now() - self._episode_start
@@ -167,6 +177,7 @@ class StepLoop:
             self.clock.sleep_until(self.clock.now() + self.reset_poll_s)
         self._previous = snapshot
         self._last_igt = snapshot.igt_ms
+        self._last_token = snapshot.frame_token
         self._deadline = None
         self._steps = 0
         self._invalid_run = 0

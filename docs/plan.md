@@ -12,7 +12,7 @@ validation procedure is in [`../MEMORY_READER.md`](../MEMORY_READER.md); project
 |---|---|---|---|
 | 1 | Environment modules: memory, controller, actions, timing, Gymnasium wrapper, fake game | G01 | Completed (approved 2026-11-18) |
 | 2 | Loop proven: automated tests, `check_env`, Windows smoke test against the live game | G02 | Completed (approved 2026-11-18) |
-| 3 | Memory fields found and verified: player state, boss object, boss state | G03 | Not started |
+| 3 | Memory fields found and verified: player state, boss object, boss state | G03 | At gate G03, waiting for the user |
 | 4 | Repeatable encounter: start, death, victory, automatic reset, scripted deflect | G04 | Not started |
 | 5 | Demonstrations recorded and a behaviour-cloned policy | G05 | Not started |
 | 6 | PPO fine-tuning and evaluation (reduced comparison) | G06 | Not started |
@@ -268,7 +268,7 @@ SHA256 and mods.
 
 #### S03-T02 — Finish validating player HP
 
-- [ ] **Status: In progress** (one session logged 2026-11-20; restarts and rematch checks open)
+- [x] **Status: Completed** (2026-11-25: death, resurrection, rest and loading screens seen; resolves on four launches, three of them restarts in a row)
 - **Purpose:** Close the gaps left by the first session log.
 - **Prerequisites:** S03-T01.
 - **Actions:** Observe HP at death, after resurrection and rest, across area reloads and
@@ -280,7 +280,7 @@ SHA256 and mods.
 
 #### S03-T03 — Player posture, position and animation
 
-- [ ] **Status: In progress** (one session logged 2026-11-20; restarts and rematch checks open)
+- [x] **Status: Completed** (2026-11-25: consistent over four launches and six fights; compared with the user's actions on 2026-11-20. Posture counts down)
 - **Purpose:** Promote the player candidates to verified.
 - **Prerequisites:** S03-T02.
 - **Actions:** Check each candidate chain against behaviour: posture direction and range,
@@ -291,7 +291,7 @@ SHA256 and mods.
 
 #### S03-T04 — In-game time and death counter
 
-- [ ] **Status: In progress** (one session logged 2026-11-20; restarts and rematch checks open)
+- [x] **Status: Completed** (2026-11-25: the death counter moves in the rematch when the death is final; in-game time does not stop in the pause menu, so the animation ring is the liveness signal)
 - **Purpose:** A liveness signal and an independent death signal.
 - **Prerequisites:** S03-T01.
 - **Actions:** Check that in-game time advances in play and stops when paused; check whether
@@ -302,7 +302,7 @@ SHA256 and mods.
 
 #### S03-T05 — Confirm the rematch in game
 
-- [ ] **Status: Not started** (user task)
+- [ ] **Status: In progress** (user task; 2026-11-25 logs show a death returns the player to the idol at full HP; menu path, entry name, gourds and victory still to be noted by the user)
 - **Purpose:** Confirm D2 before building on it.
 - **Prerequisites:** A save with Genichiro beaten.
 - **Actions:** Start the rematch; note the menu path and button count, which entry is the
@@ -314,7 +314,7 @@ SHA256 and mods.
 
 #### S03-T06 — Find the boss character object
 
-- [ ] **Status: Not started**
+- [x] **Status: Completed** (2026-11-25: found in the character collection without a value scan; NPC ID `71001000` and entity ID `1110800` on three attempts; HP, posture, position and animation follow the fight. A deathblow has not been seen: that is S04-T01)
 - **Purpose:** Get the boss object's address and confirm the field layout.
 - **Prerequisites:** S03-T03, S03-T05.
 - **Actions:** Value-scan boss HP, walk back to the character object, then verify HP,
@@ -325,7 +325,7 @@ SHA256 and mods.
 
 #### S03-T07 — Stable route to the boss
 
-- [ ] **Status: Not started**
+- [x] **Status: Completed** (2026-11-25: collection walk with an entity ID and NPC ID check found the boss on six attempts over four launches, three of them restarts in a row, and across a deathblow)
 - **Purpose:** Reach the boss from a static root without injection.
 - **Prerequisites:** S03-T06.
 - **Actions:** Try, in order: the character collection in WorldChrMan filtered by NPC ID, the
@@ -336,7 +336,7 @@ SHA256 and mods.
 
 #### S03-T08 — Add verified fields to the reader
 
-- [ ] **Status: Not started**
+- [x] **Status: Completed** (2026-11-25: reader, snapshot, loop check and tests; 81 tests pass; four fights read live through the new code; all field groups set to `live`. The default `read()` and the step loop were not run against the game after the promotion)
 - **Purpose:** Turn findings into observations.
 - **Prerequisites:** S03-T03, S03-T04, S03-T07.
 - **Actions:** Mark verified chains live, fill the snapshot, add an identity check on every
@@ -598,6 +598,8 @@ SHA256 and mods.
 | 2026-11-18 | S02-T05 | User confirmed: the character attacked twice (stepped run and delay measurement); `--hold-guard` made the character guard; killing the Python process with `taskkill /F` released guard. Sekiro accepts the virtual pad. |
 | 2026-11-18 | Stages 1–2 | Resumed. 47 tests: 45 pass, 2 skipped (need Gymnasium / Stable-Baselines3), on Windows Python 3.15 and WSL Python 3.14. Smoke test dry-run on Windows with a stubbed process. Nothing run against the game. Stopped at G02 for the user. |
 | 2026-11-20 | Stage 3 | Started; paused by the user before the rematch. S03-T01 completed: Cheat Engine connection checked, allowed operations listed, HP matched the Python reader (320/320). Live, one session, no restart: player HP (0 at death), posture (counts down from 120), position and the death counter behave as expected. In-game time does not stop in the pause menu. The animation candidate was wrong; the current animation is read from a ring in the TimeAct module, which also serves as a pause check. The character collection inside WorldChrMan was mapped; the NPC ID candidate `30, 628` is wrong and character `+0x68` is used instead. Boss not yet examined. No code changed; automated tests not re-run. Details in `MEMORY_READER.md`. |
+| 2026-11-25 | Stage 3 | Second launch of the game (PID 28268, same executable hash, a different save). Three rematch fights recorded read-only; no deathblow, no victory, no restart yet. Boss found in the character collection: NPC ID `71001000`, map entity ID `1110800` at character `+0x1A24`, block 2 entry 261 each time, at a new heap address each time. A dormant copy shares the NPC ID, so identity is entity ID plus NPC ID. Boss HP fell in steps of 340 and never rose; boss posture counts down. The death counter moves in the rematch. S03-T04 and S03-T06 completed. Deviations: Cheat Engine and value scans were not needed; the reader's chain table was replaced by layout constants and a status table; observation schema is now `v1.1-scalars` (posture encoded as bar fill); the loop treats a repeated frame token as an invalid step. Local checks: `python.exe -m unittest discover -s tests` 81 pass, none skipped (Windows); `python3 -m unittest discover -s tests` 81 run, 2 skipped (WSL, no Gymnasium). Live check: 2188 samples of one fight through `MemoryStateSource` with the boss found on every one. |
+| 2026-11-25 | Stage 3 | Three restarts done (PIDs 29772, 17992, 6976), one fight each, all read through `MemoryStateSource`: the boss was found on every sample (5801 over four fights), at block 2 entry 261 each time. One deathblow seen: boss HP is set to 1, then refilled to the maximum 2.6 s later on the same object. The user compared player HP and the boss health bar with the screen. All field groups set to `live`. S03-T02, T03, T07 and T08 completed; S03-T05 still needs the user's notes. Local checks after the promotion: 81 tests pass on Windows with none skipped; 81 run on WSL with 2 skipped. Stopped at G03. |
 
 | Gate | Approved by user | Note |
 |---|---|---|

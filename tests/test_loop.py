@@ -40,6 +40,17 @@ class ObservationTests(unittest.TestCase):
         observation = encode(Snapshot(t_ns=0, player_hp=0, player_max_hp=320))
         self.assertEqual((observation[HP], observation[HP_MASK]), (0.0, 1.0))
 
+    def test_posture_is_bar_fill_because_the_raw_value_counts_down(self):
+        fill = OBS_NAMES.index("boss_posture_fill")
+        for raw, expected in ((4083, 0.0), (0, 1.0)):
+            observation = encode(Snapshot(t_ns=0, player_hp=1, player_max_hp=1,
+                                          boss_posture=raw, boss_max_posture=4083))
+            self.assertEqual((observation[fill], observation[len(OBS_NAMES) + fill]),
+                             (expected, 1.0))
+        observation = encode(Snapshot(t_ns=0, player_hp=1, player_max_hp=1,
+                                      player_posture=90, player_max_posture=120))
+        self.assertEqual(observation[OBS_NAMES.index("player_posture_fill")], 0.25)
+
     def test_unverified_fields_stay_masked(self):
         game, loop = make()
         observation, _ = loop.reset()
@@ -82,6 +93,14 @@ class StepTests(unittest.TestCase):
         self.assertFalse(info["valid"])
         self.assertEqual(info["reason"], "in-game time not advancing")
         self.assertEqual(loop.step(actions.NOOP)[1], 0.0)
+
+    def test_pause_menu_is_invalid_although_in_game_time_runs(self):
+        game, loop = make(FakeGame(hits=[(0.15, 80)], menu=[(0.05, 0.35)]))
+        loop.reset()
+        results = [loop.step(actions.NOOP) for _ in range(5)]
+        self.assertEqual([r[4]["valid"] for r in results], [True, False, False, False, True])
+        self.assertEqual(results[1][4]["reason"], "game frame not advancing (paused)")
+        self.assertEqual([r[1] for r in results], [0.0] * 5)    # the hit fell in the menu gap
 
     def test_truncates_and_releases_after_repeated_invalid_reads(self):
         game, loop = make(FakeGame(unavailable=[(0.05, 99.0)]), max_invalid_steps=3)

@@ -8,17 +8,20 @@ from .snapshot import Snapshot
 
 
 class FakeGame:
-    def __init__(self, max_hp=320, hits=(), unavailable=(), paused=(), with_igt=True):
+    def __init__(self, max_hp=320, hits=(), unavailable=(), paused=(), menu=(), with_igt=True):
         """
         hits: (time_s, damage) pairs; a hit does nothing while guard is held.
         unavailable: (start_s, end_s) windows where reads fail, as in a loading screen.
         paused: (start_s, end_s) windows where in-game time stands still.
+        menu: (start_s, end_s) windows where the pause menu is open: the frame
+            token stands still but in-game time keeps running, as in the real game.
         """
         self.max_hp = max_hp
         self.hp = max_hp
         self.hits = sorted(hits)
         self.unavailable = tuple(unavailable)
         self.paused = tuple(paused)
+        self.menu = tuple(menu)
         self.with_igt = with_igt
         self.t = 0.0
         self.state = NEUTRAL
@@ -27,6 +30,7 @@ class FakeGame:
         self.reads = 0
         self._hit_index = 0
         self._igt = 0.0
+        self._frames = 0.0
 
     # -- clock -------------------------------------------------------------
 
@@ -43,6 +47,8 @@ class FakeGame:
                 self.hp = max(0, self.hp - damage)
         if not self._in(self.paused, self.t):
             self._igt += deadline - self.t
+            if not self._in(self.menu, self.t):
+                self._frames += deadline - self.t
         self.t = deadline
 
     def advance(self, seconds):
@@ -84,7 +90,8 @@ class FakeGame:
         if self._in(self.unavailable, self.t):
             return Snapshot(t_ns=t_ns, reason="Invalid/null pointer (simulated)")
         return Snapshot(t_ns=t_ns, player_hp=self.hp, player_max_hp=self.max_hp,
-                        igt_ms=int(self._igt * 1000) if self.with_igt else None)
+                        igt_ms=int(self._igt * 1000) if self.with_igt else None,
+                        frame_token=int(self._frames * 1000) if self.with_igt else None)
 
     def restart(self):
         """Stand-in for a supervised reset: back to full health."""

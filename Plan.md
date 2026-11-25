@@ -84,11 +84,10 @@ Chains start at the WorldChrMan root.
 |---|---|---|---|---|
 | HP | `88, 1FF8, 18, 130` | i32 | Live | Must |
 | Max HP | `88, 1FF8, 18, 134` | i32 | Live | Must |
-| Posture | `88, 1FF8, 18, 148` | i32 | Candidate | Must |
-| Max posture | `88, 1FF8, 18, 14C` | i32 | Candidate | Must |
-| Position X, Y, Z | `88, 1FF8, 68, 80` (+4, +8) | 3 x f32 | Candidate | Must |
-| Animation ID | `88, 1FF8, 10, 20` | i32 | Candidate | Must |
-| Animation elapsed (s) | `88, 1FF8, 10, 24` | f32 | Candidate | Must |
+| Posture (counts down: max = empty bar) | `88, 1FF8, 18, 148` | i32 | Checked live 2026-11-20 and 2026-11-25 | Must |
+| Max posture | `88, 1FF8, 18, 14C` | i32 | Checked live | Must |
+| Position X, Y, Z (Y is height) | `88, 1FF8, 68, 80` (+4, +8) | 3 x f32 | Checked live | Must |
+| Animation ID and elapsed (s) | ring at `88, 1FF8, 10`: read `+1C .. +F4`, entry `1C + 14 * [EC]`, ID at `+4`, elapsed at `+8` | i32, f32 | Checked live. The old route `10, 20` / `24` is **wrong** (slot 0 of the ring) | Must |
 | Animation name | `88, 1FF8, 28, 878` | UTF-16, 32 chars | Candidate | Debug aid |
 | Active effect list | head at `88, 11D0`; each node: next at `+8`, ID at `+58`, duration at `+0` | list | Candidate | Should |
 | Facing angle | none known | f32 | Find | Optional |
@@ -113,17 +112,21 @@ Offsets are relative to `E`, the same layout as the player.
 | HP / max HP | `1FF8, 18, 130` / `134` | i32 | Candidate | Must |
 | Posture / max posture | `1FF8, 18, 148` / `14C` | i32 | Candidate | Must |
 | Position X, Y, Z | `1FF8, 68, 80` | 3 x f32 | Candidate | Must |
-| Animation ID | `1FF8, 10, 20` | i32 | Candidate | Must |
-| Animation elapsed (s) | `1FF8, 10, 24` | f32 | Candidate | Must |
-| NPC ID (identity) | `30, 628` | i32 | Candidate | Must |
-| Think ID | `30, 624` | i32 | Candidate | Should |
-| Character ID | `68` (direct) | i32 | Candidate | Should |
+| Animation ID and elapsed (s) | ring at `1FF8, 10`, as for the player | i32, f32 | Checked live in three fights | Must |
+| NPC ID | `68` (direct) | i32 | Checked live: `71001000`. Shared by a dormant copy, so not enough alone. The old routes `30, 628` and `30, 624` read garbage | Must |
+| Map entity ID (identity) | `1A24` (direct) | i32 | Checked live: `1110800`, unique per placed character | Must |
 | Entity handle | `08` (direct) | u32 | Candidate | Should |
 | Team type | `74` (direct) | u8 | Candidate | Optional |
 | Poise / max poise | `1FF8, 40, 28` / `2C` | f32 | Candidate | Optional |
 | Deathblows remaining | none known | i32 | Find | Must (or use 4.5) |
 
 ### 4.4 Route to the boss character: the main thing to find
+
+**Found 2026-11-25: route 1.** The collection is 20 blocks inline in WorldChrMan at
+`+0x910 + 0x140 * b`; each block has a capacity at `+0x80` and an array of 0x38-byte entries
+at `[+0x88]`; an entry's first 8 bytes are the character pointer. The boss is the character
+with entity ID `1110800` and NPC ID `71001000`. Details and evidence are in
+`MEMORY_READER.md`. Routes 2 and 3 were not needed.
 
 Three candidate routes, in the order I recommend trying them:
 
@@ -149,15 +152,16 @@ contract and is not part of this plan.
 | Signal | Route | Status | Priority |
 |---|---|---|---|
 | Loading / no character | WorldChrMan root or player slot null | Live | Must |
-| In-game time (ms) | GameData root, `9C`, u32 | Candidate | Should |
-| Player death count | GameData root, `90`, i32 | Candidate | Should |
+| In-game time (ms) | GameData root, `9C`, u32 | Checked live. Stops in loading screens, **not** in the pause menu | Should |
+| Game frame advancing | the player's animation ring changes between two samples | Checked live. Stands still in the pause menu and around loading screens | Must |
+| Player death count | GameData root, `90`, i32 | Checked live, including in the rematch. Moves when the death is final, not at HP 0 | Should |
 | Player dead | HP = 0, cross-checked with death count | Candidate | Must |
 | Boss defeated | event flag via EventFlagMan, or deathblow count | Find | Must |
 | Lock-on active | LockTgtMan | Find | Should |
 | Player has control (no cutscene or menu) | none known | Find | Should |
 
-In-game time is also a cheap liveness check: if it stops advancing, the game is paused or in a
-menu and the step should not be counted.
+In-game time does not stop in the pause menu, so the liveness check is the animation ring
+instead; in-game time is kept as a second check for loading screens.
 
 ## 5. Order of work
 

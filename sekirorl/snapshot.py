@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import math
 from typing import Optional, Tuple
 
-SCHEMA_VERSION = "v1-scalars"
+SCHEMA_VERSION = "v1.1-scalars"     # v1.1: posture is bar fill, not the raw fraction
 
 Vec3 = Tuple[float, float, float]
 
@@ -19,11 +19,13 @@ class Snapshot:
     reason: Optional[str] = None            # why the sample is unavailable, if it is
     player_hp: Optional[int] = None
     player_max_hp: Optional[int] = None
-    player_posture: Optional[int] = None
+    player_posture: Optional[int] = None    # raw value: counts DOWN, max = empty bar
     player_max_posture: Optional[int] = None
     player_pos: Optional[Vec3] = None
     player_anim_id: Optional[int] = None
     player_anim_elapsed: Optional[float] = None
+    boss_reason: Optional[str] = None       # why the boss is unavailable, if it is
+    boss_npc_id: Optional[int] = None       # identity of the object the boss fields came from
     boss_hp: Optional[int] = None
     boss_max_hp: Optional[int] = None
     boss_posture: Optional[int] = None
@@ -31,7 +33,11 @@ class Snapshot:
     boss_pos: Optional[Vec3] = None
     boss_anim_id: Optional[int] = None
     boss_anim_elapsed: Optional[float] = None
-    igt_ms: Optional[int] = None            # in-game time, used as a liveness check
+    igt_ms: Optional[int] = None            # in-game time; stops in loading, not in the pause menu
+    death_count: Optional[int] = None
+    # Changes on every game frame while the game is running and stands still in
+    # the pause menu, so two equal consecutive tokens mean "not live".
+    frame_token: Optional[int] = None
 
     @property
     def valid(self):
@@ -43,6 +49,12 @@ def _fraction(value, maximum):
     if value is None or maximum is None or maximum <= 0:
         return None
     return value / maximum
+
+
+def _posture_fill(value, maximum):
+    """How full the posture bar is: 0 = empty, 1 = broken. The raw value counts down."""
+    fraction = _fraction(value, maximum)
+    return None if fraction is None else 1.0 - fraction
 
 
 def _clip_scaled(value, scale):
@@ -75,10 +87,10 @@ ANIM_ELAPSED_SCALE = 5.0    # seconds
 # built from recorded fights, so they arrive in a later schema version.
 OBS_FIELDS = (
     ("player_hp_frac", lambda s: _fraction(s.player_hp, s.player_max_hp)),
-    ("player_posture_frac", lambda s: _fraction(s.player_posture, s.player_max_posture)),
+    ("player_posture_fill", lambda s: _posture_fill(s.player_posture, s.player_max_posture)),
     ("player_anim_elapsed", lambda s: _clip_scaled(s.player_anim_elapsed, ANIM_ELAPSED_SCALE)),
     ("boss_hp_frac", lambda s: _fraction(s.boss_hp, s.boss_max_hp)),
-    ("boss_posture_frac", lambda s: _fraction(s.boss_posture, s.boss_max_posture)),
+    ("boss_posture_fill", lambda s: _posture_fill(s.boss_posture, s.boss_max_posture)),
     ("boss_anim_elapsed", lambda s: _clip_scaled(s.boss_anim_elapsed, ANIM_ELAPSED_SCALE)),
     ("boss_distance", _distance),
     ("boss_height_diff", _height_difference),

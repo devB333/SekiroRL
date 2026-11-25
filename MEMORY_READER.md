@@ -2,8 +2,8 @@
 
 The supplied executable version is 1.6.0.0. Use the community's 1.06
 offsets as candidates, then validate against your executable. Version text
-alone does not establish binary identity. This workspace has not been tested
-against a running game.
+alone does not establish binary identity. Results against the running game are
+in "Stage 3 live validation log" at the end of this file.
 
 ## Evidence and pointer semantics
 
@@ -236,3 +236,264 @@ Found by reading WorldChrMan (`WorldChrManImp`) and checking RTTI names; no valu
 
 Not yet done: the boss itself, and whether its block and entry index are the same after
 retries and restarts.
+
+### S03-T02 to S03-T07 — rematch, first recording (2026-11-25, PID 28268)
+
+Same executable hash and module base as above. A different save from 2026-11-20 (player
+HP 960, posture 360, death counter 393) and a different launch of the game, so this is
+the first check of the player chains across a restart. Cheat Engine was running but was
+not used; every read was made by the project's Python reader.
+
+Method: player at 10 Hz, every character within 100 m once a second, logged while the
+user started Reflection of Strength, fought Genichiro for about 40 s and died without
+resurrecting.
+
+Player, second launch:
+
+- HP, posture, position, the animation ring, the death counter and in-game time all
+  resolved on the first read with no change to any offset.
+- HP 960 → 648 → 274 → 25 → 0 over four hits. Posture 360 → 165 at the lowest and back.
+- Sitting at the idol reads animation `710320`, matching the `7103xx` idol IDs seen on
+  2026-11-20.
+- **Death counter in the rematch: it moves.** 393 → 394 at 18.7 s after HP reached 0.
+  The longer delay than on 2026-11-20 (5.6 s) is the time the death prompt was left
+  open: the animation was `110000` then `110020` while the prompt showed and changed to
+  `110010` 0.1 s after the counter moved.
+- After the death the player was back at the same idol (1.2 m from where they sat) with
+  HP 960 / 960. The loading screen read as a null root or player slot for 1.3 s.
+
+Timeline of entering the fight (seconds from the loading screen ending):
+
+| Time | Player | Boss (entry 261) |
+|---|---|---|
+| 0.0 | Chains resolve. Animation `-1`, ring not changing, in-game time not advancing | HP 1598 / 1598, posture 660 (base values) |
+| 0.8 | Same | HP 7670 / 7670, posture 3168 |
+| 6.7 | Ring starts changing; animation `700010` (2.0 s long) | Unchanged, animation `-1` |
+| 7.8 | In-game time advancing | **HP 9887 / 9887, posture 4083**, animation `405003` |
+| 9.0 | Animation `0` (idle); player has control | Approaching |
+
+So the boss's maximum HP changes twice before the fight starts, and "boss at full HP" can
+only be judged once its animation is no longer `-1`.
+
+Boss, NPC ID `71001000`, block 2, entry 261, handle `0x10008105`:
+
+| Field | Route from the character object | Observed | State |
+|---|---|---|---|
+| NPC ID | `68` | `71001000`; the next i32 (`6C`) is `7100`, the model number | One fight |
+| HP / max | `1FF8, 18, 130` | 9887 → 9547 → 9207: two hits of 340, at the same moments the animation showed a hit reaction (`8501`) | One fight |
+| Posture / max | `1FF8, 18, 148` | **Counts down**, like the player's. 4083 = empty bar; fell to 3610 under attack and recovered to 4083 | One fight |
+| Position | `1FF8, 68, 80` | Distance to the player 15 m at the start, 1 to 5 m while trading blows | One fight |
+| Animation | ring at `1FF8, 10` | Changes per attack: `3003`, `3006`, `3009`, `3014`, `3015`, `3016`, `3020`, `3037`, `3045`, `3050`, `3062`, `3076`, `3100`, `5201`; `9600`/`9700` when guarding; `8501` when hit; `405000`/`405002`/`405003` standing | One fight |
+
+**The NPC ID does not identify the boss on its own.** The same block holds dormant
+characters whose values never changed during the fight and whose animation stayed `-1`:
+
+| Entry | NPC ID | HP | Posture | Note |
+|---|---|---|---|---|
+| 258 | `54300000` | 9460 | 4434 | Dormant |
+| 261 | `71001000` | 9887 | 4083 | **The boss** |
+| 262 | `71001000` | 7670 | 3168 | Dormant copy with the same ID |
+| 263 | `71100000` | 12268 | 4320 | Dormant, at the player's spawn point |
+| 264 | `71100000` | 12268 | 4320 | Dormant, at the player's spawn point |
+
+The first 0x80 bytes of entries 261 and 262 differ only in pointers and the handle.
+
+Pause check during the fight: the player's ring changed on every one of the 10 Hz
+samples from the moment the player had control until the loading screen after death,
+including the whole time the death prompt was showing. It stood still for the 6.5 s of
+the fade-in before the fight and for 0.5 s before the loading screen.
+
+Not yet seen: a deathblow, the third phase, a victory, and whether entry 261 is the boss
+on every attempt and after a restart.
+
+### S03-T06 and S03-T07 — boss identity, second recording (2026-11-25, PID 28268)
+
+Method: as above, plus the five characters listed above logged at 10 Hz and the first
+0x2000 bytes of each object dumped every 5 s. The user fought for 70 s, died,
+resurrected, and died again.
+
+**Map entity ID at character `+0x1A24` (i32).** Found by comparing the dumps of entries
+261 and 262: it is the one small integer that is constant in each object and differs
+between them.
+
+| Entry | NPC ID (`+0x68`) | Entity ID (`+0x1A24`) | Role |
+|---|---|---|---|
+| 258 | `54300000` | `1110920` | Dormant |
+| 261 | `71001000` | **`1110800`** | **The boss** (first two health bars) |
+| 262 | `71001000` | `1110890` | Dormant copy |
+| 263 | `71100000` | `1110891` | Dormant |
+| 264 | `71100000` | `1110801` | Dormant; probably the third health bar (Way of Tomoe), not yet seen active |
+
+Away from the arena, 89 characters were loaded and all 89 had different
+(entity ID, NPC ID) pairs. The player's entity ID reads `-1` and NPC ID `0`.
+
+Route used by the reader: walk the character collection, take the one character whose
+entity ID and NPC ID both match, remember only its (block, entry) position, resolve the
+pointer from the static root on every sample, and check both IDs on the object read.
+
+Second attempt, same boss:
+
+- Entry 261 again, handle `0x10008105` again, **object at a different address**
+  (`0x7FF4A2B2C330`, was `0x7FF4ABD30D20`). The object address must never be kept.
+- HP 9887 → 9547 → 9207 → 8867 → 8697: three hits of 340 and one of 170. Posture fell
+  to 2812 of 4083.
+- The same load sequence: 1598 → 7670 at 0.3 s → 9887 at 7.7 s when the animation
+  left `-1`.
+- Other fields that change when the boss activates (not used): `+0x28` i32 1 → 0,
+  `+0x3C` i32 -1 → 2, `+0x1F30` i32 2 → 0.
+
+Player in the second attempt:
+
+- Death then resurrection: HP 0 for 4.1 s, then 480 (half of 960). The death counter
+  did not move.
+- Second death: HP 0, and the death counter went 394 → 395 after 0.9 s; there was no
+  prompt to wait on.
+- Pause check: the ring changed on every 10 Hz sample from gaining control to the
+  second death. One repeated sample 2.6 s after that death and five before the loading
+  screen.
+
+Checked through `MemoryStateSource` on the live process away from the arena: the boss
+reads as unavailable ("Boss not in the character collection") and the player stays
+valid. One read costs 0.06 ms without a boss configured and 0.67 ms when the whole
+collection has to be searched.
+
+### S03-T08 — third fight, read through `MemoryStateSource` (2026-11-25, PID 28268)
+
+Method: `MemoryStateSource(reader, base, boss=GENICHIRO).read(include_candidates=True)`
+at 10 Hz for 275 s, covering one fight of 211 s (death, resurrection, second death).
+This is the reader code the environment uses, not a throwaway script.
+
+- The boss was found at block 2, entry 261 on the first sample after the loading
+  screen and on all 2188 samples until the next loading screen. The identity check
+  never failed and no sample reported the boss as unavailable while it was loaded.
+- Boss HP 9887 → 4447 in sixteen steps, every one exactly 340. It never rose.
+- Boss posture between 2170 and 4083. Distance to the player 0.46 to 15.35.
+- 53 different boss animation IDs. Besides those listed above: `3004`, `3005`, `3007`,
+  `3011`, `3018`, `3019`, `3023`, `3025`, `3028`, `3030`, `3034`, `3036`, `3044`,
+  `3055`, `4100`, `8010`, `8012`, `8500`, `8511`, `8600`, `8601`, `8604`, `8704`,
+  `9502`, `9503`, `9999`, `13800`, `400000`, `405010`, `405401`.
+- While loading, the boss read 7670 / 7670 for 7.3 s, then **7690 / 7690 on one
+  sample**, then 9887 / 9887. A sample can land in the middle of the game rescaling
+  the boss, so the start of an episode must wait for a stable maximum as well as an
+  animation other than `-1`.
+- Player: HP 960 → 711 → 462 (249 per hit), healing back to 960, posture down to 0 at
+  one point (animation `227600170`), HP 0 for 2.7 s then 480 after resurrecting, HP 0
+  again at the end with the death counter moving 395 → 396 after 1.8 s.
+- Pause check: with the boss active, the frame token repeated on no sample during the
+  fight and on the last five samples before the loading screen. In-game time never
+  stood still during the fight.
+- Read time with the boss loaded: median 0.26 ms, maximum 0.73 ms. Largest gap between
+  samples 101 ms.
+
+Still not seen on 2026-11-25: a deathblow, the third health bar, a victory, and any
+restart of the game. The player and boss fields stay marked `candidate` in
+`sekirorl/memory.py` until the three restarts are done.
+
+User's comparison with the screen for the third fight (reported 2026-11-25): player
+maximum HP 960 matches the save, and the boss's health bar was at about half when the
+fight ended, against 4447 / 9887 (45%) read from memory.
+
+### Restart 1 of 3 (2026-11-25, PID 29772)
+
+The game was closed and started again; same executable hash and module base. Cheat
+Engine was not attached. Logged with `tools/log_snapshots.py` (10 Hz) from the title
+screen through one rematch fight of 60 s (death, resurrection, second death).
+
+- Title screen: the WorldChrMan root is null, so every sample is unavailable.
+- Save loaded: HP 960 / 960, posture 360 / 360, the same position at the idol as before
+  the restart, death counter 396 (the value at the end of the previous launch).
+- Boss: found on the first sample after the loading screen at block 2, entry 261, NPC ID
+  `71001000`, entity ID `1110800`, and on all 742 samples until the next loading screen.
+- Boss HP 7670 while dormant, 9887 once active, then 9887 → 7847 in six steps of 340.
+  It never rose. Posture 2032 to 4083. 31 animation IDs, all seen before.
+- Player: 960 → 711 → 462 (249 per hit), HP 0 for 3.7 s then 480 after resurrecting,
+  HP 0 again, death counter 396 → 397 after 1.8 s.
+- Frame token: no repeat during the fight; the last five samples before the loading
+  screen repeated.
+- Read time with the boss loaded: median 0.26 ms, maximum 0.70 ms.
+
+### Restart 2 of 3, with a deathblow (2026-11-25, PID 17992)
+
+The game was closed and started again; same executable hash and module base. Cheat
+Engine not attached. Logged with `tools/log_snapshots.py` and `tools/record_rematch.py`
+through one rematch fight of 225 s: one deathblow on the boss, then the player died.
+
+- Save loaded: HP 960 / 960, posture 360 / 360, death counter 397.
+- Boss: block 2, entry 261, NPC ID `71001000`, entity ID `1110800`, found on all 2405
+  samples from the loading screen to leaving the arena. The same load sequence as
+  before, including one sample at 7690 / 7690 before 9887 / 9887.
+- Boss HP 9887 → 4787 in fifteen steps of 340. Boss posture fell as low as 119 of 4083.
+- Death counter 397 → 398 at the end, 4.6 s after HP 0 (the prompt was showing).
+- Frame token: no repeat during the fight, deathblow included; the last four samples
+  before the loading screen repeated.
+- Read time with the boss loaded: median 0.31 ms, maximum 0.53 ms.
+
+**The deathblow** (seconds from the posture break):
+
+| Time | Boss HP | Boss posture | Boss animation | Player animation |
+|---|---|---|---|---|
+| before | 4787 | 119 | `3003` (an attack) | guarding |
+| 0.0 | 4787 | **0** | `12100` | `227510100` |
+| 0.6 | 4787 | 0 | `12110` | `227510110` |
+| 1.3 | **1** | 0 | `12110` | `227510110` |
+| 3.9 | **9887** | 0 | `12110` | player has control (`401`) |
+| 4.0 | 9887 | 4083 | `12110` | |
+| 5.1 | 9887 | 4083 | `3003` (attacking again) | |
+
+- The second health bar is **the same object in the same entry**: same entity ID, NPC ID,
+  handle and address. HP is set to 1 by the deathblow and refilled to the maximum 2.6 s
+  later; posture is refilled 0.1 s after that.
+- The player's HP rose from 8 to 200 at the moment the boss's HP went to 1.
+- The four dormant characters (entries 258, 262, 263, 264) did not change.
+- Comparing dumps of the boss object before and after the deathblow found no small
+  integer in its first 0x2000 bytes that changed and stayed changed, so a
+  "deathblows remaining" count is not in the part of the object that was dumped. Until
+  one is found, a deathblow can be read as: boss HP 1 with posture 0 and animation
+  `12110`, followed by HP returning to the maximum.
+
+### Restart 3 of 3 (2026-11-25, PID 6976)
+
+The game was closed and started again; same executable hash and module base. Cheat
+Engine not attached. Logged through one rematch fight of 30 s ending in the player's
+death.
+
+- Save loaded: HP 960 / 960, posture 360 / 360, the same position at the idol, death
+  counter 398.
+- Boss: block 2, entry 261, NPC ID `71001000`, entity ID `1110800`, found on all 466
+  samples. Load sequence 7670 → one sample at 7690 → 9887.
+- Boss HP 9887 → 8867 in three steps of 340; it never rose. Posture 3199 to 4083.
+- Player: 960 → 711 → 212 → 25 → 0; death counter 398 → 399 after 3.8 s.
+- Frame token: no repeat during the fight; the last four samples before the loading
+  screen repeated.
+- Read time with the boss loaded: median 0.25 ms, maximum 1.48 ms.
+
+### Summary of 2026-11-25 and promotion to `live`
+
+Four launches of the same executable (PIDs 28268, 29772, 17992, 6976), six rematch
+fights, one deathblow, no victory. On every launch every chain resolved with no change
+to any offset, and on every fight:
+
+- the boss was the character with entity ID `1110800` and NPC ID `71001000`, at block 2,
+  entry 261, and was found on every sample while it was loaded (5801 samples through
+  `MemoryStateSource` over four fights);
+- boss HP fell only in steps of 340 or 170, and rose only once, at the refill after
+  the deathblow;
+- the player's HP, posture, position and animation followed the fight, the death
+  counter moved once per final death, and the frame token never repeated during play.
+
+On this evidence these groups were set to `live` in `sekirorl/memory.py` `STATUS`:
+`player_posture`, `player_position`, `player_animation` (with the frame token), `boss`
+(for `GENICHIRO` only), `igt`, `death_count`. `player_hp` was already live.
+
+Limits of this validation:
+
+- Every sample above was read with `read(include_candidates=True)`. The default `read()`
+  with the promoted table runs the same code but was not run against the game after the
+  promotion, and neither was `StepLoop` or the smoke test.
+- The user compared player HP and the boss health bar with the screen once (third
+  fight). Posture, position and animation were compared with the user's actions on
+  2026-11-20 and only with the course of the fights on 2026-11-25.
+- The third health bar (probably entity `1110801`), a victory, and the story fight
+  outside Reflection of Strength have not been seen.
+- No Windows reboot between launches, and no area travel on 2026-11-25 other than into
+  and out of the arena (twelve loading screens).

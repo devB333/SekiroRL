@@ -48,16 +48,19 @@ def describe(index, observation, reward, info):
     return line
 
 
-def measure_press_latency(reader, base, controller, button, timeout_s=1.0):
-    """Time from a button press to the player's animation ID changing.
+def player_animation(reader, base):
+    """Current full-body animation ID of the player, read from the TimeAct ring."""
+    wcm = reader.pointer(base + memory.WORLD_CHR_MAN_RVA)
+    return reader.read_character(reader.pointer(wcm + memory.WCM_PLAYER)).anim_id
 
-    Uses an UNVERIFIED candidate chain, so the figure is provisional.
-    """
-    root, offsets, fmt, _ = memory.CHAINS["player_anim_id_elapsed"]
+
+def measure_press_latency(reader, base, controller, button, timeout_s=1.0):
+    """Time from a button press to the player's full-body animation ID changing."""
+    status = memory.STATUS["player_animation"]
     try:
-        before = reader.read_chain(base + root, offsets, fmt)[0]
+        before = player_animation(reader, base)
     except memory.Unavailable as error:
-        return f"not measured: animation chain unavailable ({error})"
+        return f"not measured: animation unavailable ({error})"
     start = time.perf_counter()
     controller.apply(ControlState(buttons=frozenset({button})))
     released, result = False, None
@@ -67,12 +70,12 @@ def measure_press_latency(reader, base, controller, button, timeout_s=1.0):
             controller.neutral()
             released = True
         try:
-            current = reader.read_chain(base + root, offsets, fmt)[0]
+            current = player_animation(reader, base)
         except memory.Unavailable:
             continue
         if current != before:
             result = (f"{elapsed * 1000:.1f} ms (animation ID {before} -> {current}; "
-                      f"candidate chain, unverified)")
+                      f"route status: {status})")
             break
     controller.neutral()
     return result or f"no animation ID change within {timeout_s} s (ID stayed {before})"

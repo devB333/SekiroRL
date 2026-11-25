@@ -4,9 +4,10 @@
 
 This project provides a read-only external Sekiro health reader for Windows, intended for reinforcement learning observations.
 
-- `sekirorl/memory.py` contains the `ctypes` Windows API wrapper, pointer resolution, the chain table (each chain marked live or candidate), sampling, and the command-line entry point. `read_health.py` is a thin wrapper that keeps the documented command line.
+- `sekirorl/memory.py` contains the `ctypes` Windows API wrapper, pointer resolution, the character and collection layout, the status table (each field group marked live or candidate), the boss lookup by map entity ID and NPC ID, sampling, and the command-line entry point. `read_health.py` is a thin wrapper that keeps the documented command line.
 - `sekirorl/snapshot.py` defines the raw `Snapshot` and the fixed observation layout (values plus validity bits).
 - `sekirorl/controller.py`, `actions.py`, `clock.py` and `loop.py` hold controller output, the discrete action set with press/release schedules, timing, and the fixed-rate step loop. `sekirorl/env.py` is the Gymnasium wrapper; `sekirorl/fake.py` is the simulated game used by tests; `sekirorl/smoke_test.py` is the live Windows check.
+- `tools/` holds two read-only recorders for live checks (`log_snapshots.py`, `record_rematch.py`); their logs go outside the repo.
 - `tests/` holds standard-library `unittest` tests. `docs/plan.md` is the staged roadmap with gates; `docs/handoffs/current.md` is the state of the task in progress.
 - `MEMORY_READER.md` documents candidate 1.06 offsets, sources, discovery procedures, and live validation. `Plan.md` is the feasibility report and pointer list.
 - Keep generated session logs out of commits.
