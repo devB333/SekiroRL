@@ -1,7 +1,8 @@
 # Handoff: Stage 3, memory fields (at gate G03)
 
 Written: 2026-11-25. Status: **Stage 3 work is finished and reported at gate G03. Do not
-start Stage 4 until the user approves the gate. Nothing from 2026-11-25 is committed.**
+start Stage 4 until the user approves the gate. The work is committed and pushed to
+`origin/master` (commits `5458066` and `3af5ef7`).**
 
 How this folder works: `current.md` describes the task in progress. When a gate is approved,
 move this file to `done/` (named `YYYY-MM-DD-short-title.md`) and write a new `current.md`.
@@ -93,7 +94,7 @@ rematch fights, one deathblow, no victory. A different save from 2026-11-20: pla
 - **The user's screen check:** player maximum HP 960 matches; boss bar "about half" against
   45% read from memory.
 
-## Code changed on 2026-11-25 (uncommitted)
+## Code changed on 2026-11-25 (commit `5458066`)
 
 - `sekirorl/memory.py`: `CHAINS` is gone. Layout constants, a `STATUS` table (every group
   is now `live`), `Reader.read_character` (one character in one pass, module table
@@ -148,8 +149,8 @@ descriptor RVA at `locator + 0xC`, name at `descriptor + 0x10`.
   from WSL). Installed there: gymnasium 1.4.0, numpy 2.5.5, stable-baselines3 2.9.2,
   torch 2.15.0 (CPU build), vgamepad 0.2.0; the ViGEmBus driver is present.
 - `session-01.jsonl` is UTF-16 and 1.3 MB; do not read it whole. Do not open `PointerMaps/`.
-- `sekirorl/__pycache__/` is committed, so running the tests on Windows shows two `.pyc`
-  files as changed. There is no `.gitignore`.
+- Python bytecode is no longer tracked; `.gitignore` covers `__pycache__/` and `*.pyc`.
+- The remote is `origin` on GitHub and its only branch is `master`; the user calls it main.
 - The game window must be focused for the tools to send controller input. Reading does
   not need focus.
 - The user follows along in the terminal and reports when a fight has ended.
