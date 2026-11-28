@@ -497,3 +497,190 @@ Limits of this validation:
   outside Reflection of Strength have not been seen.
 - No Windows reboot between launches, and no area travel on 2026-11-25 other than into
   and out of the arena (twelve loading screens).
+
+### Animation IDs read back from the logs of 2026-11-25 (analysed 2026-11-26)
+
+No new live session. Everything below is from the four sessions logged through
+`MemoryStateSource` at 10 Hz on 2026-11-25 (one idol, one save), and has not been
+compared with the screen. `sekirorl/reset.py` and `sekirorl/scripted.py` rely on it.
+
+Player at the idol and around a death:
+
+| Animation | Seen | Meaning taken |
+|---|---|---|
+| `710310` | 1.1 s, four times, before `710320` | Sitting down at the idol |
+| `710320` | 4.4 to 8.6 s, four times | Sitting; the idol menu is open |
+| `710360` | 2.6 to 2.7 s, four times, then the loading screen | Rematch confirmed |
+| `110000` | 3.3 to 3.4 s after HP reached 0, on five of six deaths; the sixth showed `192700` for 2.0 s | Falling |
+| `110020` | 0.4 to 1.3 s, on the first death of an attempt only | The Resurrect/Die prompt is open |
+| `110030` | Twice, with HP 480 | Resurrected |
+| `110010` | 4.0 to 4.2 s, four times, then the loading screen | Final death; the death counter moves as it starts |
+| `-1`, then `700010` | 4.1 to 4.3 s and 2.0 s at the idol after a death (longer after launching the game and in the arena) | No control yet |
+
+- On the second death of an attempt there was no `110020`: `110000` went straight to
+  `110010`, so no prompt showed and nothing had to be pressed.
+- After every death and every load the player stood at `(161.22, -29.01, 23.00)`. All
+  four times the user then walked 2.1 to 2.6 m (to x 163.3 to 163.8) before `710310`
+  started. Whether the idol can be used from the respawn point is not known.
+- From HP 0 to control at the idol: 3.3 s, the prompt if any, 4.1 s, 1.3 s loading,
+  4.2 s, 2.0 s. About 15 s without counting the prompt.
+
+Boss animation `3014` (ten occurrences in four fights; it was the boss's first attack in
+all four, 2.3 to 2.7 s after the boss became active):
+
+- The first sample showing damage had an animation elapsed time of 0.77 to 0.88 s, and
+  the sample before it 0.67 to 0.78 s. So the hit lands between 0.77 and 0.78 s.
+- Not guarded (six times): player HP -249, posture -67, player animation `100300`.
+- Guarded (four times): HP unchanged, boss posture unchanged. Three were deflects
+  (posture -26, player animation `50203000` then `50130201`) and one a block (posture
+  -52, `50120204`); see the correction below the table.
+- `3015` followed it every time.
+
+Guard reactions of the player. "Times" counts the starts of the animation; the posture
+columns are the change over the sample before and the sample after, where there was one
+(in the other cases the change fell outside those two samples). Boss HP did not change in
+any of them.
+
+| Player animation | Times | Player posture | Boss posture | Boss animation | Reading |
+|---|---|---|---|---|---|
+| `50130201` | 13 | -26 (5 times) | 0 | Stays in its attack (`3009`, `3014`, `3018`) | **Deflect**, on attacks where the boss loses no posture (see below) |
+| `501201xx`, `501202xx` | 50 | -31 to -111 (33 times) | 0 | An attack, or `9700` | Blocked |
+| `50130101`, `50130102` | 48 | -27 (25 times), -11 to -24 (9 times) | -159, sometimes -79 (35 times) | Cut from an attack (`3076`, `3015`, `3003`, `3006`, `3050`) to `8600`, `8601` or `9600` | **Deflected**: the boss's attack is cut short and the boss loses posture |
+| `50130302` | 10 | -7 or -8 (7 times) | -79 (8 times) | `9600` or `9700` throughout | Not clear; the boss was guarding |
+
+**Corrected on 2026-11-27:** `50130201` was first read as a block. It is a deflect. On
+2026-11-27 the scripted policy pressed guard 0.11 to 0.15 s
+before the hit of `3014` in three fights; the user watched and saw a deflect with sparks
+each time; all three read player posture -26, boss posture unchanged, player animation
+`50203000` then `50130201`. Looking again at the four guarded occurrences of 2026-11-25:
+in three, guard (`50203000`) went up 0.05 s or less before the hit and the reaction was
+`50130201` with -26; in the fourth, guard had been up for 0.5 s and the reaction was
+`50120204` with -52. So:
+
+- `5013xxxx` is a deflect. It costs the player about 26 posture. Whether the boss loses
+  posture depends on the attack: not on `3014`, 159 (sometimes 79) on the attacks cut to
+  `8600`, `8601` or `9600`.
+- `5012xxxx` is a block. It costs the player more (31 to 111).
+- `50130302` and `50130700` are in the deflect family; what sets them apart is not known.
+
+`AttackOutcomes` in `sekirorl/scripted.py` now scores by the player's reaction animation.
+The reading rests on the user's screen checks of `3014` (eight scripted deflects on
+2026-11-27, all read as `50130201`) and on one block.
+
+## Seen in the first live reset runs (2026-11-27)
+
+Two automatic resets and two fights with no input during the fight
+(`logs/2026-11-27/run-165554.jsonl`). The game had been restarted once since the logs of
+2026-11-25.
+
+- The respawn point was again (161.22, -29.01, 23.0), and the player sat down from
+  (163.58, -29.06, 22.71) and from within 0.24 m of (163.5, 22.8) on the first try both
+  times.
+- A full stick push of 0.4 s carried the player 1.93 m, the stop included (player
+  animations `400`, `600`); a 0.6 push of 0.4 s carried 0.79 m (`100`, `300`, `600`).
+- From the last menu press to the player leaving the seat (`710360`): under 0.1 s. From
+  there to the boss being loaded: 3.8 s both times. From the boss loaded to the fight
+  running: 8.4 and 8.3 s.
+- A player who stands still: the opening attack `3014` hit at step 23 both times, HP was
+  87 at step 50, and HP reached 0 at step 71 (7.1 s) both times.
+- **The death then did not use the animations logged on 2026-11-25.** It ran `227600170`
+  (2.8 s), `227600171` (5.5 s), `227610172` (15.0 s), `227610171` (4.2 s), then the loading
+  screen. `110000`, `110020` and `110010` did not appear. No input was sent during it. The
+  user, watching, said the Resurrect/Die prompt was up and nobody pressed LB. So a death
+  by this move has its own animation IDs, `227610172` is probably the prompt for it, and
+  the prompt gives up by itself after about 15 s and the player dies. Seen once.
+- A third set in a later fight the same day: `110420` (1.6 s), `110021` (1.6 s; LB was
+  being pressed every 1.5 s), `110011` (3.7 s), then the loading screen. With LB pressed
+  like this, HP 0 to the loading screen took 7.4 s.
+- One respawn ran `-1` (4.1 s), `700000` (0.4 s), `700010`; the others went from `-1`
+  straight to `700010`.
+- The boss's animation time is not always even from sample to sample. In one run 11 of
+  521 consecutive pairs within one animation stepped back (for example 0.58, 0.53, 0.78,
+  0.73) and 30 more advanced by something other than the sample interval; in another,
+  1 and 2 of 414. Not looked into.
+- `3014` hits from about 5.8 m (distance between the two positions at the hit).
+- The death counter read 401 when HP reached 0 in the first fight and 402 in the second:
+  it had not moved yet at HP 0 and moved by one with the final death, as on 2026-11-25.
+
+The virtual pad and other controllers: with the user's own controller on when Sekiro
+started, nothing from the virtual pad reached the game (stick, attack, jump), with the
+user's controller on or switched off afterwards. `XInputGetState` in our process showed
+the virtual pad on slot 0 and no other XInput pad at any time. After restarting Sekiro with
+the user's controller off, the same check moved the player at once. The likely reason
+(not examined further) is that the user's controller goes through Steam Input and holds
+the game's first controller slot for the whole game session.
+
+## Lock-on state (found 2026-11-27, PID 21488)
+
+```text
+B = actual loaded base of sekiro.exe
+L = read_u64(B + 0x3D78058)        # the lock-on manager (LockTgtMan); a game-owned root
+target = read_u32(L + 0x28)        # handle of the locked character; 0xFFFFFFFF = no lock
+locked on the boss  <=>  target == read_u32(C_boss + 0x08)
+```
+
+How it was found, with memory reads only: in one fight the virtual pad held guard and
+pressed lock-on (R3) eight times, 2 s apart, while 0x4000 bytes at `L` and 0x2100 bytes of
+the player object were read ten times a second (`logs/scratch/find_lock_on.py`, compared
+by `logs/scratch/lock_on_diff.py`). Four 4-byte fields were steady between presses and
+changed at every press:
+
+| Where | Unlocked | Locked | Used |
+|---|---|---|---|
+| `L + 0x28` | `0xFFFFFFFF` | `0x10008105`, the boss's handle | Yes |
+| `L + 0x2830` | `0xFF000000` | `0xFF000101` | No |
+| player object `+ 0x1070` | 0 | 1 | No |
+| player object `+ 0x1090` | 0 | 2 | No |
+
+`L + 0x28` changed in the same sample as each press (within 0.1 s). The fight started
+unlocked. The user watched the marker on the boss switch on and off with every press.
+
+Marked `live` in `memory.STATUS` on this one session. Not checked: other game restarts,
+a lock on a character other than the boss, a lock the game drops by itself. The reader
+compares the target with the handle of the boss it has identified by entity and NPC ID,
+so a lock on anything else reads as not locked on. `reset.LockKeeper` stops pressing for
+the fight if the lock has never read as on after three presses.
+
+
+## Healing Gourd charges (found 2026-11-27, PID 16608)
+
+```text
+B = actual loaded base of sekiro.exe
+G = read_u64(B + 0x3D5AAC0)        # the GameData root (also death counter and in-game time)
+I = read_u64(G + 0x0)              # the object that holds the player's item list
+E = read_u64(I + 0x1018)           # the entries; on this day E == I + 0x1650
+n = read_i32(I + 0x1020)           # entries in use (188 on this day)
+entry k at E + 0x10 * k:  u32 handle, u32 item ID, i32 quantity, u32 other
+gourd charges = quantity of the entry whose item ID is 0x40000BB8
+```
+
+How it was found, with queries and reads only (`logs/scratch/find_gourds.py`): the user
+stood near the idol with 9 charges on the HUD. All committed read-write memory (4,526
+regions, 7,991 MB) was scanned for 4-byte values equal to 9: 1,398,948 places. Those
+places were read again about once a second for 300 s; a place stayed in while its value
+was unchanged or one lower than before. The user drank six times. One place,
+`0x7ff49e7fc298`, went down six times (at 23.8, 28.0, 31.1, 34.2, 37.3 and 113.4 s) and
+read 3 at the end; the HUD showed 3. No other place went down five times or more.
+
+A pointer search back from that address reached the GameData root four ways and the
+player object once (all five gave the same address when read back):
+
+| From | Offsets |
+|---|---|
+| GameData | `0x0`, `0x1778` |
+| GameData | `0x0`, `0x1018`, `0x128` |
+| GameData | `0x8`, `0x430`, `0x28`, `0x128` |
+| WorldChrMan | `0x88`, `0x2000`, `0xB58` |
+
+`[G + 0x8]` and `[player + 0x2000]` are the same object. The memory around the address
+is a list of 16-byte entries; entry 18 was `B0000BB8 40000BB8 00000003 003E8112`. The
+next entries had other item IDs with plausible quantities (10, 1, 22, 3, 10).
+
+The reader (`MemoryStateSource._gourds`) uses the second route, finds the entry by its
+item ID among the first `n`, remembers its position and checks the ID on every read. A
+quantity outside 0 to 10 is not believed. Read time for a whole snapshot stayed under 1 ms.
+
+Marked `live` in `memory.STATUS` on this one session. Not checked: another game restart,
+the count after resting and at the start of a rematch, a save with a different number of
+gourd seeds, whether item ID `0x40000BB8` is the gourd in every save (it is inferred from
+the six drinks, not from a list of item IDs).

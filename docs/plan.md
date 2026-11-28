@@ -12,10 +12,10 @@ validation procedure is in [`../MEMORY_READER.md`](../MEMORY_READER.md); project
 |---|---|---|---|
 | 1 | Environment modules: memory, controller, actions, timing, Gymnasium wrapper, fake game | G01 | Completed (approved 2026-11-18) |
 | 2 | Loop proven: automated tests, `check_env`, Windows smoke test against the live game | G02 | Completed (approved 2026-11-18) |
-| 3 | Memory fields found and verified: player state, boss object, boss state | G03 | At gate G03, waiting for the user |
-| 4 | Repeatable encounter: start, death, victory, automatic reset, scripted deflect | G04 | Not started |
-| 5 | Demonstrations recorded and a behaviour-cloned policy | G05 | Not started |
-| 6 | PPO fine-tuning and evaluation (reduced comparison) | G06 | Not started |
+| 3 | Memory fields found and verified: player state, boss object, boss state | G03 | Completed (approved 2026-11-25) |
+| 4 | Repeatable encounter: start, death, victory, automatic reset, scripted deflect | G04 | Completed (approved 2026-11-27, one-hour soak waived) |
+| 5 | Demonstrations recorded and a behaviour-cloned policy | G05 | In progress (recorder written 2026-11-27; nothing recorded from the user yet) |
+| 6 | PPO fine-tuning and evaluation (reduced comparison) | G06 | Only S06-T04 done (2026-11-27) |
 
 Stages 1–2 are steps 1–2 of the original request. Stages 3–4 together are step 3, split so the
 Cheat Engine work has its own gate. Stages 5–6 are steps 4–5.
@@ -30,11 +30,11 @@ controller for output. The agent is an MLP policy trained by behaviour cloning a
 
 | ID | Decision |
 |---|---|
-| D1 — Target | Genichiro Ashina, tower fight, three deathblows. Curriculum: end the episode at the first deathblow, then extend. |
+| D1 — Target | Genichiro Ashina, tower fight, three deathblows. Curriculum: end the episode at the first deathblow, then extend. **2026-11-25: the user wants training on the first deathblow first; the third health bar (a different character) is investigated later.** |
 | D2 — Reset | Reflection of Strength rematch menu at a Sculptor's Idol, driven by controller inputs. Needs a save where he is already beaten. Behaviour on death and victory is unconfirmed until S03-T05. |
 | D3 — Read-only memory | No writes, injection, freezing or scripts, ever. This includes Cheat Engine use during discovery: value scans, memory viewing and pointer scans only. |
 | D4 — Stack | Gymnasium, Stable-Baselines3, PyTorch, `vgamepad`. Numerical observations, no screenshots. |
-| D5 — Action space | One flat discrete list: 5 movements × 6 button behaviours = 30 actions. Guard has two behaviours: hold, and re-press (deflect). |
+| D5 — Action space | One flat discrete list: 9 movements × 10 button behaviours = 90 actions. Guard has two behaviours: hold, and re-press (deflect). **2026-11-27: the user asked for sprint (dodge held), heal (D-pad up), charged thrust (attack held) and combat art (guard and attack together); none of the four has been tried on the game. The four diagonal movements were added the same day by the agent, after the user's recorded play showed 16% of steps on a diagonal; the user can reverse it.** |
 | D6 — Observation layout | Flat vector of scaled values followed by one validity bit per value. A field stays masked as unavailable until its memory route is verified. |
 | D7 — Invalid data | A missing or stale read is invalid: never zero HP, never used for reward. Reward is only taken between two consecutive valid samples. |
 | D8 — Step rate | 10 per second (100 ms) to start, configurable. |
@@ -53,6 +53,14 @@ what is needed, and record the change in section F.
 A check only counts if it actually ran. Syntax checks, automated tests against the fake game,
 and checks against the running game are three different things and are always reported
 separately. A task whose live check cannot be run is Blocked, not Completed.
+
+### Commits
+
+From 2026-11-27, at the user's request: commit regularly and push to the main branch
+(`master` on `origin`), without waiting to be asked. A commit is due whenever a piece of
+work is finished and its tests pass: a task of this plan, a live session's findings written
+up, a fix. Run `python -m unittest discover -s tests` first and say in the handoff what was
+committed. Session logs, models and recordings (`logs/`, `models/`, `demos/`) stay out.
 
 ### Gates
 
@@ -302,7 +310,7 @@ SHA256 and mods.
 
 #### S03-T05 — Confirm the rematch in game
 
-- [ ] **Status: In progress** (user task; 2026-11-25 logs show a death returns the player to the idol at full HP; menu path, entry name, gourds and victory still to be noted by the user)
+- [ ] **Status: In progress** (user task, carried into Stage 4 because only S04-T04 needs it; 2026-11-25 logs show a death returns the player to the idol at full HP; menu path, entry name and gourds still to be noted by the user. 2026-11-26: nine questions sent to the user on Discord; the logs also show the player respawns 2.3 m from where they sit and walked there each time, and that the Resurrect/Die prompt only shows on the first death of an attempt. 2026-11-27: the user gave the notes. Idol: walk up, X to sit; the cursor always starts on the first entry; 8 down, A (Reflections of Strength), 2 down ("Genichiro Ashina"), A, A. The Resurrect/Die prompt shows after a death; LB is Die; the respawn is standing next to the idol with no menu open. The fight goes on after the first deathblow; only after the second deathblow and a cutscene is the player placed somewhere else (the user is not sure of that part). Gourds are full at every start. There is no way out of a running fight short of quitting to the main menu. Not answered: whether the idol can be used from the respawn point without walking)
 - **Purpose:** Confirm D2 before building on it.
 - **Prerequisites:** A save with Genichiro beaten.
 - **Actions:** Start the rematch; note the menu path and button count, which entry is the
@@ -357,7 +365,7 @@ SHA256 and mods.
 
 #### S04-T01 — Deathblow and victory signal
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (2026-11-25: first-deathblow rule in `sekirorl/encounter.py`; correct on the four recorded fights, one of which has a deathblow. Ten live fights still to do)
 - **Purpose:** Know when a health bar is broken and when the fight is won.
 - **Prerequisites:** G03.
 - **Actions:** Find a deathblow count or derive it from boss HP refills; define victory for
@@ -368,7 +376,7 @@ SHA256 and mods.
 
 #### S04-T02 — Player death and episode termination
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (2026-11-25: the loop terminates on player HP 0 and on victory when given an `Encounter`; tested on the fake game and the recorded fights. Not yet run live)
 - **Purpose:** Turn on `terminated`.
 - **Prerequisites:** S03-T02, S04-T01.
 - **Actions:** Detect death; add termination on death and on victory; keep the step limit as
@@ -379,7 +387,7 @@ SHA256 and mods.
 
 #### S04-T03 — Episode start detection
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (2026-11-25: `Encounter.ready` waits for an active boss at a stable full HP, the player out of the walk-in, and the frame advancing; on the recorded fights it fires 8.3 to 9.5 s after the boss loads and before the first hit. Not yet run live)
 - **Purpose:** Start stepping only when the fight is really running.
 - **Prerequisites:** S03-T08.
 - **Actions:** Require the player loaded, the boss identified at full HP, and in-game time
@@ -390,7 +398,7 @@ SHA256 and mods.
 
 #### S04-T04 — Automatic reset
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (2026-11-26: `sekirorl/reset.py` written and tested on a simulated idol and rematch (`FakeRematch`): it checks each stage from memory and reports the stage that failed. The inputs themselves (`GENICHIRO_REMATCH`) are not written: they need the notes of S03-T05. Not run live. 2026-11-27: `GENICHIRO_REMATCH` written from the user's notes. The walk to the idol is a new step, `WalkTo`: stop-and-go stretches steered by the position read from memory, because the stick is camera-relative and the camera is not read; it also lets a reset start from anywhere within 5 m of the idol. The runner waits for the game window before an automatic reset sends anything. 167 tests pass on the simulation. First live runs the same day: 10 of 11 resets worked, in runs of 2, 3 and 5; the failure (a respawn animation that was not known) has a fix that then ran 5 times. Then 20 of 20 in a row in the soak (`logs/2026-11-27/run-171332.jsonl`), the right boss every time, which meets the acceptance count. All 30 live resets followed a death; a reset after a step-limit ending or a victory has only run on the simulation)
 - **Purpose:** Restart the fight without a human.
 - **Prerequisites:** S03-T05, S04-T02, S04-T03.
 - **Actions:** Script the menu inputs for death, victory and step-limit endings; detect and
@@ -401,7 +409,7 @@ SHA256 and mods.
 
 #### S04-T05 — Log fights and build the animation vocabulary
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (2026-11-26: `tools/build_vocabulary.py` built `sekirorl/data/animations-genichiro.json` from the four fights of 2026-11-25: 62 boss and 109 player IDs. Observation schema `v2-anim-<hash>`: one-hot blocks with an unknown slot, 191 values. Rebuild after more fights are logged; each rebuild changes the layout. 2026-11-27: rebuilt from the four fights of 2026-11-25 and the ten runs of 2026-11-27 (21,097 samples with the boss loaded): 74 boss and 184 player IDs, 278 values, schema `v2-anim-ae7cf69e`. No logged fight went past the first health bar)
 - **Purpose:** Make animation IDs usable by the policy.
 - **Prerequisites:** S03-T08.
 - **Actions:** Log raw snapshots for several fights as UTF-8; build the ID vocabulary with an
@@ -412,7 +420,7 @@ SHA256 and mods.
 
 #### S04-T06 — Scripted deflect
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (2026-11-26: `sekirorl/scripted.py`: `DeflectPolicy` for the boss's opening attack (animation `3014`, hit at 0.77 to 0.78 s in all ten logged occurrences) and `AttackOutcomes` to score hit, block or deflect from memory. Replayed on the logged occurrences only. What a deflect looks like in memory is inferred, not seen on this attack. Not run live. 2026-11-27, live: 8 of 8 opening attacks deflected with guard pressed on the sample at 0.58 to 0.65 s; the user saw all eight as deflects on screen. The scoring was corrected: a deflect of this attack costs the boss no posture, and deflect or block is read from the player's reaction animation (`5013xxxx` or `5012xxxx`))
 - **Purpose:** Prove the timing budget before any learning.
 - **Prerequisites:** S04-T05.
 - **Actions:** A hand-written policy that deflects one chosen attack from its animation ID
@@ -423,7 +431,7 @@ SHA256 and mods.
 
 #### S04-T07 — Unattended-run safety
 
-- [ ] **Status: Not started**
+- [ ] **Status: In progress** (2026-11-27: a 20-minute random-policy soak passed with the user away: 20 fights, 20 resets, 0 invalid steps of 4,204, inputs neutral at exit. The foreground check is in the loop, the reset and the runner's start. Alt-tab during a fight, by the user (`run-180147.jsonl`): the steps went invalid with the inputs released, the episode was truncated, and the reset refused to press anything without focus; inputs neutral at exit. Not done: the one-hour soak, keep-awake, reattach after a game restart. Closing the game mid-run was seen once by accident in a dry run: it ended with "Process exited" and inputs neutral)
 - **Purpose:** Hours of virtual input without accidents.
 - **Prerequisites:** S04-T04.
 - **Actions:** Foreground-window check, keep-awake, reattach after a game restart, and a
@@ -446,7 +454,12 @@ SHA256 and mods.
 
 #### S05-T01 — Physical pad pass-through
 
-- [ ] **Status: Not started**
+- [ ] **Status: Dropped on 2026-11-27, replaced by direct recording.** The user plays with
+  their own pad and `sekirorl/pad.py` reads it through XInput (query only); the labels are
+  made offline by `demos.Labeller`. Reason: the game takes one controller per launch, and
+  direct recording needs nothing sent to the game. Cost: the user's input is not limited to
+  the action set while playing, so S05-T03 has to measure what is lost. Proposed by the
+  agent; the user asked "should we record my play?" and did not object to the method.
 - **Purpose:** Let the human play through the agent's own action wrapper.
 - **Prerequisites:** G04.
 - **Actions:** Read the physical pad, map it to the action set, send it through the virtual
@@ -457,7 +470,10 @@ SHA256 and mods.
 
 #### S05-T02 — Recorder
 
-- [ ] **Status: Not started**
+- [ ] **Status: Written and tested 2026-11-27 (`sekirorl/demos.py`, `tests/test_demos.py`);
+  not yet run on the user's pad.** Pad polled 125 times a second, snapshots 62.5 times.
+  Live check on the agent's own play (virtual pad in slot 0, 4 minutes): the offline cut
+  found the same fight the trainer logged (241 steps, reward -0.991, boss HP left 0.957).
 - **Purpose:** Data that survives later changes to features and step rate.
 - **Prerequisites:** S05-T01.
 - **Actions:** Record raw snapshots, raw pad state and the wrapper's action with timestamps
@@ -554,7 +570,11 @@ SHA256 and mods.
 
 #### S06-T04 — Short PPO-from-scratch run
 
-- [ ] **Status: Not started**
+- [x] **Status: Done 2026-11-27 (`models/run-3h/`).** 105 fights, 35,478 steps (about 59
+  minutes of fighting, 2.3 hours with resets), 30 actions, default settings. No deathblow.
+  No improvement: the last 17 fights averaged 28.8 s and 96% of boss HP left, the first 15
+  about 30 s and 96%. Best fight: boss HP left 67%. The model is not continued: the action
+  set changed afterwards.
 - **Purpose:** A reference point only (D10).
 - **Prerequisites:** S06-T01.
 - **Actions:** One short run with the same environment settings.
@@ -600,12 +620,25 @@ SHA256 and mods.
 | 2026-11-20 | Stage 3 | Started; paused by the user before the rematch. S03-T01 completed: Cheat Engine connection checked, allowed operations listed, HP matched the Python reader (320/320). Live, one session, no restart: player HP (0 at death), posture (counts down from 120), position and the death counter behave as expected. In-game time does not stop in the pause menu. The animation candidate was wrong; the current animation is read from a ring in the TimeAct module, which also serves as a pause check. The character collection inside WorldChrMan was mapped; the NPC ID candidate `30, 628` is wrong and character `+0x68` is used instead. Boss not yet examined. No code changed; automated tests not re-run. Details in `MEMORY_READER.md`. |
 | 2026-11-25 | Stage 3 | Second launch of the game (PID 28268, same executable hash, a different save). Three rematch fights recorded read-only; no deathblow, no victory, no restart yet. Boss found in the character collection: NPC ID `71001000`, map entity ID `1110800` at character `+0x1A24`, block 2 entry 261 each time, at a new heap address each time. A dormant copy shares the NPC ID, so identity is entity ID plus NPC ID. Boss HP fell in steps of 340 and never rose; boss posture counts down. The death counter moves in the rematch. S03-T04 and S03-T06 completed. Deviations: Cheat Engine and value scans were not needed; the reader's chain table was replaced by layout constants and a status table; observation schema is now `v1.1-scalars` (posture encoded as bar fill); the loop treats a repeated frame token as an invalid step. Local checks: `python.exe -m unittest discover -s tests` 81 pass, none skipped (Windows); `python3 -m unittest discover -s tests` 81 run, 2 skipped (WSL, no Gymnasium). Live check: 2188 samples of one fight through `MemoryStateSource` with the boss found on every one. |
 | 2026-11-25 | Stage 3 | Three restarts done (PIDs 29772, 17992, 6976), one fight each, all read through `MemoryStateSource`: the boss was found on every sample (5801 over four fights), at block 2 entry 261 each time. One deathblow seen: boss HP is set to 1, then refilled to the maximum 2.6 s later on the same object. The user compared player HP and the boss health bar with the screen. All field groups set to `live`. S03-T02, T03, T07 and T08 completed; S03-T05 still needs the user's notes. Local checks after the promotion: 81 tests pass on Windows with none skipped; 81 run on WSL with 2 skipped. Stopped at G03. |
+| 2026-11-25 | Stage 4 | Started after G03. Added `sekirorl/encounter.py` and an `encounter` argument to `StepLoop`: reset waits for the fight to be running; the episode terminates on player HP 0 (D9) or on the configured number of deathblows (1 for now). The fake game got a scriptable boss. A compact fixture of the four fights logged through `MemoryStateSource` is in `tests/data/` and replayed by the tests: fight start found in all four, one deathblow reported once in the one fight that had it, none in the others. Local checks: 108 tests pass on Windows, none skipped; 108 run on WSL, 2 skipped. Nothing in Stage 4 has been run against the game. Raw logs of 2026-11-25 are kept in `logs/` (ignored by git). |
+| 2026-11-26 | Stage 4 | No live session (the game was not running). Written and tested offline: `sekirorl/reset.py` (automatic reset; inputs still missing), `sekirorl/runner.py` (live runner: dry run by default, logs every snapshot and step), `sekirorl/scripted.py` (deflect of the opening attack, and scoring of its outcome), `FakeRematch` in `sekirorl/fake.py`, `tools/build_vocabulary.py` and observation schema v2 with animation IDs. From the logs of 2026-11-25: idol, death and prompt animation IDs, the respawn point, and the timing of boss animation `3014` (in `MEMORY_READER.md`). Local checks: 151 tests pass on Windows, none skipped. S03-T05 questions sent to the user. |
+| 2026-11-27 | Stage 4 | The user gave the idol menu notes (S03-T05). `GENICHIRO_REMATCH` written in `sekirorl/reset.py`, with a `WalkTo` step that steers to the idol from the position in memory. First live runs with input (game PID 21488, logs `logs/2026-11-27/run-165554`, `run-165834`, `run-170516`): 10 of 11 automatic resets worked and 10 fights ran with 0 invalid steps of 926; the scripted deflect pressed for the opening attack in 8 fights and all 8 read as deflects and the user saw all 8 as deflects on screen. Found and fixed on the way: with the user's controller on at game start the game ignores the virtual pad (start Sekiro with it off); death animations differ by killing move, so Die is pressed for as long as HP is 0; a respawn animation `700000` made one walk start early; a deflect of the opening attack costs the boss no posture, so deflect or block is now read from the player's reaction animation. `python.exe -m unittest discover -s tests`: 172 passed, none skipped. Then a soak with random inputs: 20 fights, 20 resets, 0 invalid steps of 4,204, 20 minutes. Not done: a live reset after a step-limit or victory ending, the alt-tab check, a one-hour soak, vocabulary rebuild. |
+| 2026-11-27 | Decision | The user asked for episodes to go as far into the fight as possible instead of ending at the first deathblow. The runner now defaults to `--deathblows 2` (both health bars of the first Genichiro). Going on into the third health bar needs the other character (entity `1110801`) found in memory first. The second deathblow and what follows it have not been recorded. |
+| 2026-11-27 | Decision | The user asked for two more things: the agent locks on to Genichiro in every fight (R3), and the reward counts the boss's posture damage as well as HP. Added `reset.LockOn` (one press when the fight is found running) and `loop.FightReward` (boss HP 1.0, boss posture 2.0, player HP 1.0 per bar; the user then said posture matters more than HP, and the first weight of 0.5 was changed to 2.0; the user also asked for the player's posture to be penalised a little, set to 0.25 per bar). 185 tests pass; neither has been seen on the game. The 33 fights logged earlier that day were not locked on. |
+| 2026-11-27 | Stage 4 | Lock-on state found in memory with reads only: `[B + 0x3D78058] + 0x28` holds the locked character's handle, `0xFFFFFFFF` with no lock (eight presses in one fight, each matched by the field and by the marker the user watched). `Snapshot.locked_on` added; `reset.LockKeeper` replaces the single press and re-locks only when the reading says the lock is off the boss. One game session; no restart check yet. `python.exe -m unittest discover -s tests`: 198 passed, none skipped. |
+| 2026-11-27 | S06-T04 | PPO from scratch, `models/run-3h/`, three starts. The first two stopped when the game window lost the front (screen turned off; another window). The third ran 2 hours and stopped the same way. In total 105 fights, 35,478 steps, 16 invalid steps, all in the three fights that were cut when the window lost the front (one per start), every reset worked without a retry (24 to 45 s), no deathblow, no improvement. `winutil.keep_awake()` held for the 2 hours. |
+| 2026-11-27 | Decision | After the run the user chose to record their own play next (Stage 5) and asked for more actions: sprint, heal, charged thrust and combat art, and for the gourd count to be read from memory. Mikiri needs no new action (dodge toward a thrust). The action set is now 50; the model of `run-3h` has 30 outputs and cannot be continued. The user also raised a penalty for button spamming earlier the same day; nothing is written for it. |
+| 2026-11-27 | Stage 5 | Written and tested on the simulation: `sekirorl/pad.py` (XInput reader, query only), `sekirorl/demos.py` (recorder, loader, labeller, offline cut into fights, report). `loop.Liveness` split out of `StepLoop` so the offline cut uses the live validity rule. 256 tests pass, none skipped. Live: the pad reader saw the virtual pad in slot 0, and a 4-minute recording of the agent's own play was cut into the same fight the trainer logged. The user's own controller has not been read yet; whether it shows up through XInput is unknown. Scratch tool for the gourd search: `logs/scratch/find_gourds.py` (value scan and pointer search, reads only; its self-test found the known HP route from WorldChrMan). |
+| 2026-11-27 | Stage 5 | New game session with the user's controller on (PID 16608). The controller is a DualSense on USB, which XInput does not show; `pad.DualSensePad` now reads its HID input reports (opened for reading only) and the user's seven test presses came through in order. Gourd charges found in memory (item list entry with ID `0x40000BB8`, see `MEMORY_READER.md`): 9 to 3 over six drinks. Added `Snapshot.gourds` and an observation value for it; the schema is now `v3-gourds-...`. 271 tests pass, none skipped. First recording of the user's play started: `demos/user-2026-11-27-a.jsonl`. |
+| 2026-11-27 | Stage 5 | The user recorded 17 fights with their own controller (12 victories through both deathblows, 32,573 steps, `demos/user-2026-11-27-b.jsonl` and `-c.jsonl`). Offline, the deathblow rules ended all 12 as `victory`. Diagonal movements added (90 actions); observation got the fine animation times; vocabulary rebuilt from all recordings (99 boss, 262 player IDs; schema `v3-gourds-b550a3c1`). `sekirorl/clone.py` written (S05-T05) and `runner --policy model` added. `models/clone-1/`: on 3 held-out fights the copy's most likely action has the same buttons as the user's in 73% of steps. Not yet played on the game. 280 tests pass, none skipped. |
+| 2026-11-27 | Decision | The user asked for everything so far to be committed and pushed, and for regular commits from now on (section C, Commits). This replaces the earlier rule of committing only when asked. |
 
 | Gate | Approved by user | Note |
 |---|---|---|
 | G01 | 2026-11-18 | Reported and approved together with G02. |
 | G02 | 2026-11-18 | Approved after the live smoke run. The 30-action list was presented and not objected to. HP was confirmed at full health only in this run. |
-| G03 | — | |
+| G03 | 2026-11-25 | The user asked to move on to training on the first part of the fight and to leave the third health bar for later; taken as approval. The user compared player HP and the boss bar with the screen. Left open: the user's rematch menu notes (S03-T05, needed by S04-T04); posture encoded as bar fill and the deathblow counting as damage in the reward were put to the user and not answered, so the defaults stand. The default read path and the step loop have not been run live since the fields were marked live. |
+| G04 | 2026-11-27 | The user approved moving on ("Yes write the script") after the report of 2026-11-27. Waived: the one-hour soak. Accepted as not seen live: a victory, the second deathblow, a step-limit ending. Decided with it: a PPO run from scratch (S06-T04) comes before Stage 5, because the game takes one controller per launch and the pad pass-through (S05-T01) has to solve that first; episodes run to the second deathblow; the reward weighs boss posture above boss HP; lock-on is kept on the boss. `sekirorl/train.py` written the same day and tested on the simulation only (206 tests pass). |
 | G04 | — | |
 | G05 | — | |
 | G06 | — | |
