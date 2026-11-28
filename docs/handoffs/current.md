@@ -231,6 +231,24 @@ instead of 3e-4, 0.01, 0.2. The agent's numbers, not tuned.
   --fine-tune --name ppo-from-clone-2` and **no** `--value-warmup` (unless it stopped
   inside the first three batches).
 
+## The 8-hour PPO run from the copy, finished 2026-11-28 (`models/ppo-from-clone-2/`)
+
+Ended on time: 267 fights, 177,354 steps in fights (179,007 counted by PPO), 0 invalid
+steps, every reset worked (longest 45 s; the one failure was the first try of the run).
+All 267 fights ended in death. **18 fights reached the first deathblow, none the second.**
+
+Mean reward per fight, 25 fights a group (the first 17 are the copy with its actions
+frozen): -1.12, then -0.95, -0.76, -0.38, -0.75, +0.35, -0.30, -0.30, +0.07, -0.16,
++0.30. Fight length went from 45 s to 65-90 s; boss HP left from 92% to about 78%. Best
+single fight +3.90. Fights with a deathblow per group: 0, 0, 1, 2, 0, 6, 1, 0, 2, 2, 4.
+The value head's explained variance rose from below zero to about 0.6.
+
+So PPO from the copy learns, unsteadily: about 1.2 points per fight gained in 8 hours.
+The agent's guess, given to the user: 30 to 80 more hours to reliable wins if it does not
+stall, and three ways to shorten that (more recorded fights; ending fights at the first
+deathblow until that is reliable; less dead time in the reset, which is a third of
+every hour). The user has not chosen among them.
+
 ## The user's plan for the reward (2026-11-28)
 
 "Wait for a bit until it gets a successful record majority of the time but then optimize
@@ -246,13 +264,10 @@ the first the agent has ever landed. The user saw one on screen.
 
 ## Next step, in order
 
-0. **The user asked for 6 more hours of PPO after the 8-hour run ends** (about 08:30
-   local on 2026-11-28). As soon as it ends: `python.exe -u -m sekirorl.train --pid 25896
-   --hours 6 --resume models/ppo-from-clone-2/last.zip --fine-tune --name
-   ppo-from-clone-2` (no `--value-warmup`). At 6 h 40 min the run had 228 fights, 148,000
-   steps, 13 fights with a first deathblow, no victory, mean reward around 0 over the
-   last 36 fights against -1.12 for the copy; best stretch +0.35 (fights 118-142).
-
+0. **The 6-hour extension the user asked for is running** since about 08:30 local on
+   2026-11-28: `python.exe -u -m sekirorl.train --pid 25896 --hours 6 --resume
+   models/ppo-from-clone-2/last.zip --fine-tune --name ppo-from-clone-2`. Same folder;
+   `after-8h.zip` there is the model as the 8-hour run left it.
 1. When the run ends or stops: summarise it for the user (fights, length, boss HP left
    early against late, deathblows, why it stopped). Batches 1 to 3 are the baseline.
 2. If PPO made it worse than the copy: go back to `clone-3`, and try a lower learning
