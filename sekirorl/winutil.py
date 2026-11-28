@@ -24,3 +24,21 @@ def foreground_window():
 def focus_check_for(pid):
     """Return a callable that is true while `pid` owns the foreground window."""
     return lambda: foreground_window()[0] == pid
+
+
+ES_CONTINUOUS, ES_SYSTEM_REQUIRED, ES_DISPLAY_REQUIRED = 0x80000000, 0x00000001, 0x00000002
+
+
+def keep_awake(on=True):
+    """Ask Windows not to sleep or turn the display off while this thread
+    lives (`on=False` withdraws the request). Controller input does not count
+    as activity for Windows, so a long run would otherwise end at the idle
+    timeout: with the display off or the PC locked the game is no longer the
+    foreground window. Returns False if the call failed.
+    """
+    kernel32 = C.WinDLL("kernel32", use_last_error=True)
+    kernel32.SetThreadExecutionState.argtypes = [C.c_uint]
+    kernel32.SetThreadExecutionState.restype = C.c_uint
+    wanted = ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED if on else 0
+    return kernel32.SetThreadExecutionState(ES_CONTINUOUS | wanted) != 0
+

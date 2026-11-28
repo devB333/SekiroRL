@@ -4,9 +4,11 @@ Order inside one step: apply the action at the step start, wait until the
 deadline, then read. The returned observation therefore shows the consequence
 of the action, and the delay from observation to next action is inference time.
 
-This milestone never sets `terminated`: player death has not yet been observed
-as HP 0 in the live game and there is no verified victory signal, so episodes
-end by truncation only (step limit, repeated invalid reads, or a long gap).
+Without an `encounter` the loop never sets `terminated`: episodes end by
+truncation only (step limit, repeated invalid reads, or a long gap). With one
+(see encounter.py), reset waits until the fight is really running and the
+episode terminates when the player's HP reaches 0 or the boss has taken the
+configured number of deathblows.
 """
 import threading
 import time
@@ -39,6 +41,90 @@ def _percentile(values, fraction):
         return None
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, int(fraction * len(ordered)))]
+
+
+class FightReward:
+    """Reward between two consecutive valid snapshots, from HP and posture.
+
+    Each part is a fraction of its bar times a weight:
+    - player HP lost: negative (`player_hp`); HP gained (healing) is positive.
+    - boss HP lost: positive (`boss_hp`).
+    - boss posture damage: positive (`boss_posture`). Raw posture counts down,
+      so a fall is damage. Posture the boss recovers is not taken back.
+    - player posture damage: negative (`player_posture`). Recovered posture is not
+      given back.
+
+    A deathblow shows as the boss's HP dropping to 1 and its posture to 0, so
+    it pays whatever was left of both bars. The refill after it (HP and
+    posture going back up) pays nothing, and neither does a change of a
+    maximum (the boss's bars are rescaled while it wakes up).
+
+    The boss's posture weighs twice his HP by default: the user's call on
+    2026-11-27, because posture is what wins this fight most of the time. The
+    user also asked for the player's posture to count, less than the player's
+    HP; a quarter is the agent's number.
+
+    Because recovered posture is not taken back, posture damage can be earned
+    again and again without the fight getting any nearer its end. The step
+    limit is the only bound on that.
+    """
+
+    def __init__(self, player_hp=1.0, boss_hp=1.0, boss_posture=2.0, player_posture=0.25):
+        self.player_hp = player_hp
+        self.boss_hp = boss_hp
+        self.boss_posture = boss_posture
+        self.player_posture = player_posture
+
+    @staticmethod
+    def _lost(previous, current, name, maximum_name):
+        """Fraction of the bar lost, or 0.0 if unavailable or the maximum changed."""
+        before, after = getattr(previous, name), getattr(current, name)
+        maximum = getattr(current, maximum_name)
+        if None in (before, after, maximum) or maximum <= 0:
+            return 0.0
+        if getattr(previous, maximum_name) != maximum:
+            return 0.0
+        return (before - after) / maximum
+
+    def __call__(self, previous, current):
+        reward = -self.player_hp * self._lost(previous, current, "player_hp", "player_max_hp")
+        reward += self.boss_hp * max(0.0, self._lost(previous, current, "boss_hp", "boss_max_hp"))
+        reward += self.boss_posture * max(0.0, self._lost(previous, current, "boss_posture",
+                                                         "boss_max_posture"))
+        reward -= self.player_posture * max(0.0, self._lost(previous, current, "player_posture",
+                                                           "player_max_posture"))
+        return reward
+
+
+class Liveness:
+    """Whether a snapshot is usable as a step and the game moved on since the
+    last one. `begin(snapshot)` at the start of an episode, then
+    `check(snapshot)` once per step: (valid, reason).
+
+    Missing HP or a game that is not advancing is invalid. The frame token
+    stands still in the pause menu; in-game time stands still in loading
+    screens. Either one not moving means no step happened.
+    """
+
+    def begin(self, snapshot):
+        self._igt = snapshot.igt_ms
+        self._token = snapshot.frame_token
+
+    def check(self, snapshot):
+        if not snapshot.valid:
+            return False, snapshot.reason or "player HP unavailable"
+        reason = None
+        last = self._igt
+        if snapshot.igt_ms is not None:
+            self._igt = snapshot.igt_ms
+            if last is not None and snapshot.igt_ms <= last:
+                reason = "in-game time not advancing"
+        last = self._token
+        if snapshot.frame_token is not None:
+            self._token = snapshot.frame_token
+            if reason is None and last is not None and snapshot.frame_token == last:
+                reason = "game frame not advancing (paused)"
+        return reason is None, reason
 
 
 class _Watchdog:
@@ -83,8 +169,8 @@ class _Watchdog:
 class StepLoop:
     def __init__(self, source, controller, clock, step_interval=0.1, tap_s=0.05,
                  repress_gap_s=0.034, max_steps=3000, max_invalid_steps=5, gap_factor=2.0,
-                 reward_fn=hp_reward, focus_check=None, reset_hook=None,
-                 reset_timeout_s=30.0, reset_poll_s=0.1, watchdog_s=None):
+                 reward_fn=hp_reward, focus_check=None, reset_hook=None, lock_keeper=None,
+                 reset_timeout_s=30.0, reset_poll_s=0.1, watchdog_s=None, encounter=None):
         actions.validate_timing(step_interval, tap_s, repress_gap_s)
         self.source = source
         self.controller = controller
@@ -96,11 +182,16 @@ class StepLoop:
         self.max_invalid_steps = max_invalid_steps
         self.gap_factor = gap_factor
         self.reward_fn = reward_fn
+        # lock_keeper.begin() at every reset; lock_keeper(snapshot) before every
+        # step says whether to tap lock-on in that step (see reset.LockKeeper).
+        self.lock_keeper = lock_keeper
         self.focus_check = focus_check
         self.reset_hook = reset_hook
         self.reset_timeout_s = reset_timeout_s
         self.reset_poll_s = reset_poll_s
+        self.encounter = encounter
         self._watchdog = _Watchdog(controller, watchdog_s) if watchdog_s else None
+        self._live = Liveness()
         self._needs_reset = True
         self._held = NEUTRAL
         self._closed = False
@@ -120,27 +211,6 @@ class StepLoop:
         except Exception:
             pass
         self._held = NEUTRAL
-
-    def _check(self, snapshot):
-        """Return (valid, reason). Missing HP or a game that is not advancing is invalid.
-
-        The frame token stands still in the pause menu; in-game time stands
-        still in loading screens. Either one not moving means no step happened.
-        """
-        if not snapshot.valid:
-            return False, snapshot.reason or "player HP unavailable"
-        reason = None
-        last = self._last_igt
-        if snapshot.igt_ms is not None:
-            self._last_igt = snapshot.igt_ms
-            if last is not None and snapshot.igt_ms <= last:
-                reason = "in-game time not advancing"
-        last = self._last_token
-        if snapshot.frame_token is not None:
-            self._last_token = snapshot.frame_token
-            if reason is None and last is not None and snapshot.frame_token == last:
-                reason = "game frame not advancing (paused)"
-        return reason is None, reason
 
     def _summary(self):
         elapsed = self.clock.now() - self._episode_start
@@ -166,18 +236,25 @@ class StepLoop:
         self._release_all()
         if self.reset_hook is not None:
             self.reset_hook()
+        if self.encounter is not None:
+            self.encounter.begin()
         give_up = self.clock.now() + self.reset_timeout_s
         while True:
             snapshot = self.source.read()
-            if snapshot.valid:
+            if self.encounter is None:
+                ready, reason = snapshot.valid, snapshot.reason
+            else:
+                ready, reason = self.encounter.ready(snapshot)
+            if ready:
                 break
             if self.clock.now() >= give_up:
-                raise ResetFailed(f"No valid player HP within {self.reset_timeout_s} s: "
-                                  f"{snapshot.reason}")
+                what = "No valid player HP" if self.encounter is None else "Fight not running"
+                raise ResetFailed(f"{what} within {self.reset_timeout_s} s: {reason}")
             self.clock.sleep_until(self.clock.now() + self.reset_poll_s)
+        if self.lock_keeper is not None:
+            self.lock_keeper.begin()
         self._previous = snapshot
-        self._last_igt = snapshot.igt_ms
-        self._last_token = snapshot.frame_token
+        self._live.begin(snapshot)
         self._deadline = None
         self._steps = 0
         self._invalid_run = 0
@@ -220,12 +297,17 @@ class StepLoop:
 
         focused = self.focus_check() if self.focus_check is not None else True
         applied = []
+        lock_pressed = False
         if gap or not focused:
             self._release_all()
             if self._watchdog and not gap:
                 self._watchdog.pet()
         else:
             plan = actions.schedule(action, self._held, self.tap_s, self.repress_gap_s)
+            if (self.lock_keeper is not None and self._previous is not None
+                    and self.lock_keeper(self._previous)):
+                plan = actions.with_tap(plan, "lock_on", self.tap_s)
+                lock_pressed = True
             for offset, state in plan:
                 self.clock.sleep_until(start + offset)
                 self._apply(state)
@@ -241,7 +323,7 @@ class StepLoop:
         self._wake_late.append(wake_late)
         self._apply_late.append(apply_late)
 
-        valid, reason = self._check(snapshot)
+        valid, reason = self._live.check(snapshot)
         if valid and not focused:
             valid, reason = False, "game window not in foreground"
         if valid and gap:
@@ -258,8 +340,18 @@ class StepLoop:
             self._invalid_run += 1
             self._invalid_total += 1
 
+        terminated, outcome, events = False, None, None
+        if valid and self.encounter is not None:
+            events = self.encounter.update(snapshot)
+            if events["player_dead"]:       # checked first: a trade is a loss (D9)
+                terminated, outcome = True, "death"
+            elif events["victory"]:
+                terminated, outcome = True, "victory"
+
         truncated, why = False, None
-        if gap:
+        if terminated:
+            pass
+        elif gap:
             truncated, why = True, "gap"
         elif self._invalid_run >= self.max_invalid_steps:
             truncated, why = True, "invalid_reads"
@@ -272,16 +364,22 @@ class StepLoop:
             "action": actions.ACTION_NAMES[action],
             "player_hp": snapshot.player_hp,
             "player_max_hp": snapshot.player_max_hp,
+            "boss_hp": snapshot.boss_hp,
+            "boss_max_hp": snapshot.boss_max_hp,
+            "locked_on": snapshot.locked_on,
             "timing": {"apply_late_s": apply_late, "wake_late_s": wake_late,
                        "read_s": read_s, "overrun": overrun, "gap": gap},
             "applied": applied,
+            "lock_pressed": lock_pressed,
         }
-        if truncated:
+        if events is not None:
+            info["encounter"] = events
+        if terminated or truncated:
             self._release_all()
             self._needs_reset = True
-            info["truncation_reason"] = why
+            info["termination_reason" if terminated else "truncation_reason"] = outcome or why
             info["timing_summary"] = self._summary()
-        return encode(snapshot), reward, False, truncated, info
+        return encode(snapshot), reward, terminated, truncated, info
 
     def close(self):
         if self._closed:

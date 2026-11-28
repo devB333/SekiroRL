@@ -7,7 +7,7 @@ from sekirorl.actions import action_index as A
 from sekirorl.controller import NEUTRAL, ControlState, RecordingController
 from sekirorl.fake import FakeGame
 from sekirorl.loop import ResetFailed, StepLoop
-from sekirorl.snapshot import OBS_NAMES, OBS_SIZE, Snapshot, encode
+from sekirorl.snapshot import MASK_NAMES, OBS_NAMES, OBS_SIZE, Snapshot, encode
 
 HP = OBS_NAMES.index("player_hp_frac")
 HP_MASK = len(OBS_NAMES) + HP
@@ -54,7 +54,7 @@ class ObservationTests(unittest.TestCase):
     def test_unverified_fields_stay_masked(self):
         game, loop = make()
         observation, _ = loop.reset()
-        self.assertEqual(observation[len(OBS_NAMES):], [1.0] + [0.0] * (len(OBS_NAMES) - 1))
+        self.assertEqual(observation[len(OBS_NAMES):], [1.0] + [0.0] * (len(MASK_NAMES) - 1))
 
 
 class StepTests(unittest.TestCase):
@@ -202,9 +202,57 @@ class InputTests(unittest.TestCase):
         self.assertEqual(game.state, ControlState(frozenset(), (0.0, 1.0)))
 
     def test_action_table(self):
-        self.assertEqual(actions.NUM_ACTIONS, 30)
-        self.assertEqual(len(set(actions.ACTION_NAMES)), 30)
+        self.assertEqual(actions.NUM_ACTIONS, 90)
+        self.assertEqual(len(set(actions.ACTION_NAMES)), 90)
         self.assertEqual(actions.ACTION_NAMES[actions.NOOP], "stay+none")
+
+    def test_actions_are_every_movement_with_every_button_mode(self):
+        moves = len(actions.MOVEMENTS)
+        self.assertEqual(actions.ACTION_NAMES[::moves],
+                         tuple(f"stay+{name}" for name, _, _ in actions.BUTTON_MODES))
+        self.assertEqual(actions.ACTION_NAMES[:moves],
+                         ("stay+none", "forward+none", "back+none", "left+none", "right+none",
+                          "forward_left+none", "forward_right+none", "back_left+none",
+                          "back_right+none"))
+
+    def test_a_diagonal_pushes_the_stick_to_its_rim(self):
+        game, loop = make()
+        loop.reset()
+        loop.step(A("back_right+none"))
+        x, y = game.state.stick
+        self.assertEqual((x > 0, y < 0), (True, True))
+        self.assertAlmostEqual(x * x + y * y, 1.0, places=3)
+
+    def test_sprint_and_thrust_hold_their_button_across_steps(self):
+        for name, button in (("sprint", "dodge"), ("thrust", "attack")):
+            with self.subTest(name=name):
+                game, loop = make()
+                loop.reset()
+                for _ in range(4):
+                    loop.step(A(f"forward+{name}"))
+                self.assertEqual(game.state, ControlState(frozenset({button}), (0.0, 1.0)))
+                self.assertEqual(len(game.press_times(button)), 1)
+                loop.step(A("forward+none"))
+                self.assertEqual(game.state, ControlState(frozenset(), (0.0, 1.0)))
+
+    def test_heal_taps_the_item_button(self):
+        game, loop = make()
+        loop.reset()
+        start = game.t
+        loop.step(A("stay+heal"))
+        self.assertEqual(game.press_times("use_item"), [start])
+        self.assertEqual(game.state, NEUTRAL)
+
+    def test_combat_art_taps_guard_and_attack_together(self):
+        game, loop = make()
+        loop.reset()
+        loop.step(A("stay+guard_hold"))
+        start = game.t
+        loop.step(A("stay+combat_art"))
+        both = [(t, state) for t, state in game.log if state.buttons == {"guard", "attack"}]
+        self.assertEqual([t for t, _ in both], [start])
+        self.assertEqual(game.press_times("attack"), [start])
+        self.assertEqual(game.state, NEUTRAL)
 
     def test_unknown_button_is_rejected(self):
         with self.assertRaises(ValueError):

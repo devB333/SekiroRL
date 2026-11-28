@@ -73,8 +73,33 @@ MAX_BLOCK_CAPACITY = 4096   # sanity limit on a capacity read from memory
 GENICHIRO = (1110800, 71001000)             # tower fight, first two health bars
 GENICHIRO_WAY_OF_TOMOE = (1110801, 71100000)    # third health bar; seen dormant only
 
+# Lock-on: [base + LOCK_TGT_MAN_RVA] is the lock-on manager. The u32 at +0x28
+# is the handle (CHR_HANDLE) of the locked character, or 0xFFFFFFFF with no
+# lock. Found on 2026-11-27 by pressing lock-on eight times in one fight; see
+# MEMORY_READER.md. Not yet checked across game restarts.
+LOCK_TGT_MAN_RVA = 0x3D78058
+LOCK_TARGET_HANDLE = 0x28
+NO_LOCK_TARGET = 0xFFFFFFFF
+
 GAME_DATA_DEATHS = 0x90     # i32, from [base + GAME_DATA_RVA]
 GAME_DATA_IGT = 0x9C        # u32 milliseconds
+
+# Healing Gourd charges: the quantity of one entry of the player's item list.
+# [[base + GAME_DATA_RVA] + 0x0] is the object that holds the list; in it,
+# +0x1018 points to the entries and the i32 at +0x1020 is how many are in use.
+# An entry is 16 bytes: u32 handle, u32 item ID, i32 quantity, u32 other.
+# Found on 2026-11-27 (PID 16608): the quantity went 9 -> 3 over six drinks the
+# user counted, and matched the HUD at both ends. One game session only; see
+# MEMORY_READER.md. The entry's position (18 that day) is looked up by item ID.
+GAME_DATA_ITEMS = 0x0
+ITEMS_ENTRIES = 0x1018
+ITEMS_COUNT = 0x1020
+ITEM_ENTRY_SIZE = 0x10
+ITEM_ID = 0x4
+ITEM_QUANTITY = 0x8
+MAX_ITEM_ENTRIES = 2048
+HEALING_GOURD_ITEM = 0x40000BB8
+MAX_GOURD_CHARGES = 10      # the game's limit; a count outside 0..10 is not believed
 
 # Verification status of each group of snapshot fields. "live" means checked
 # against the running game as recorded in MEMORY_READER.md. A "candidate" is
@@ -87,6 +112,8 @@ STATUS = {
     "boss": "live",                     # GENICHIRO only; see MEMORY_READER.md
     "igt": "live",
     "death_count": "live",
+    "lock_on": "live",                  # one game session only; see LOCK_TGT_MAN_RVA
+    "gourds": "live",                   # one game session only; see GAME_DATA_ITEMS
 }
 
 
@@ -308,6 +335,7 @@ class MemoryStateSource:
         self.boss = tuple(boss) if boss is not None else None
         self.status = dict(STATUS if status is None else status)
         self._boss_slot = None
+        self._gourd_entry = None
 
     def _live(self, name):
         return self.status[name] == "live"
@@ -390,6 +418,48 @@ class MemoryStateSource:
 
     # -- snapshot ----------------------------------------------------------
 
+    def _lock_target(self):
+        """Handle of the locked character, NO_LOCK_TARGET, or None if unreadable."""
+        try:
+            manager = self.reader.pointer(self.base + LOCK_TGT_MAN_RVA)
+            return struct.unpack("<I", self.reader.read(manager + LOCK_TARGET_HANDLE, 4))[0]
+        except Unavailable:
+            return None
+
+    def _gourds(self):
+        """Healing Gourd charges left, or None if the entry cannot be found.
+
+        The entry's position is remembered, never its address, and the item
+        ID is checked on every read.
+        """
+        reader = self.reader
+        try:
+            game_data = reader.pointer(self.base + GAME_DATA_RVA)
+            items = reader.pointer(game_data + GAME_DATA_ITEMS)
+            entries = reader.pointer(items + ITEMS_ENTRIES)
+            raw = None
+            if self._gourd_entry is not None:
+                raw = reader.read(entries + ITEM_ENTRY_SIZE * self._gourd_entry, ITEM_ENTRY_SIZE)
+                if struct.unpack_from("<I", raw, ITEM_ID)[0] != HEALING_GOURD_ITEM:
+                    raw = self._gourd_entry = None
+            if raw is None:
+                count, = struct.unpack("<i", reader.read(items + ITEMS_COUNT, 4))
+                if not 0 < count <= MAX_ITEM_ENTRIES:
+                    return None
+                table = reader.read(entries, ITEM_ENTRY_SIZE * count)
+                for index in range(count):
+                    start = ITEM_ENTRY_SIZE * index
+                    if struct.unpack_from("<I", table, start + ITEM_ID)[0] == HEALING_GOURD_ITEM:
+                        self._gourd_entry = index
+                        raw = table[start:start + ITEM_ENTRY_SIZE]
+                        break
+                else:
+                    return None
+        except Unavailable:
+            return None
+        charges, = struct.unpack_from("<i", raw, ITEM_QUANTITY)
+        return charges if 0 <= charges <= MAX_GOURD_CHARGES else None
+
     def _game_data(self):
         game_data = self.reader.pointer(self.base + GAME_DATA_RVA)
         raw = self.reader.read(game_data + GAME_DATA_DEATHS, GAME_DATA_IGT + 4 - GAME_DATA_DEATHS)
@@ -425,6 +495,10 @@ class MemoryStateSource:
                               boss_posture=boss.posture, boss_max_posture=boss.max_posture,
                               boss_pos=boss.position, boss_anim_id=boss.anim_id,
                               boss_anim_elapsed=boss.anim_elapsed)
+                if want("lock_on"):
+                    target = self._lock_target()
+                    if target is not None:
+                        fields.update(locked_on=target == boss.handle)
         if want("igt") or want("death_count"):
             try:
                 deaths, igt_ms = self._game_data()
@@ -435,6 +509,8 @@ class MemoryStateSource:
                     fields.update(igt_ms=igt_ms)
                 if want("death_count"):
                     fields.update(death_count=deaths)
+        if want("gourds"):
+            fields.update(gourds=self._gourds())
         return Snapshot(t_ns=t_ns, **fields)
 
     def probe_candidates(self):

@@ -14,8 +14,24 @@ BUTTONS = {
     "guard": "XUSB_GAMEPAD_LEFT_SHOULDER",     # LB: hold to block, fresh press to deflect
     "dodge": "XUSB_GAMEPAD_B",                 # B
     "jump": "XUSB_GAMEPAD_A",                  # A
+    "use_item": "XUSB_GAMEPAD_DPAD_UP",        # D-pad up: the selected quick item
     "lock_on": "XUSB_GAMEPAD_RIGHT_THUMB",     # R3, not part of the agent's action set
 }
+# Pad buttons the reset script uses to drive menus, named after the pad and not
+# after a game function. None of them is part of the agent's action set.
+MENU_BUTTONS = {
+    "pad_a": "XUSB_GAMEPAD_A",
+    "pad_b": "XUSB_GAMEPAD_B",
+    "pad_x": "XUSB_GAMEPAD_X",
+    "pad_y": "XUSB_GAMEPAD_Y",
+    "dpad_up": "XUSB_GAMEPAD_DPAD_UP",
+    "dpad_down": "XUSB_GAMEPAD_DPAD_DOWN",
+    "dpad_left": "XUSB_GAMEPAD_DPAD_LEFT",
+    "dpad_right": "XUSB_GAMEPAD_DPAD_RIGHT",
+    "pad_start": "XUSB_GAMEPAD_START",
+    "pad_back": "XUSB_GAMEPAD_BACK",
+}
+BUTTONS.update(MENU_BUTTONS)
 
 
 @dataclass(frozen=True)

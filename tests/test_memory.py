@@ -402,6 +402,119 @@ def arena(kernel=None):
     return kernel
 
 
+LOCK_MANAGER = 0x7FF404000000
+
+
+def with_lock(kernel, target):
+    """Map the lock-on manager with `target` as the locked character's handle."""
+    kernel.put(BASE + memory.LOCK_TGT_MAN_RVA, struct.pack("<Q", LOCK_MANAGER))
+    kernel.put(LOCK_MANAGER, bytes(0x100))
+    kernel.put(LOCK_MANAGER + memory.LOCK_TARGET_HANDLE, struct.pack("<I", target))
+    return kernel
+
+
+class LockOnTests(SimulatedMemoryCase):
+    """Values as read from the live game on 2026-11-27."""
+
+    def locked_on(self, kernel, **kwargs):
+        return source(kernel, boss=memory.GENICHIRO, **kwargs).read().locked_on
+
+    def test_the_boss_handle_in_the_manager_is_locked_on(self):
+        self.assertIs(self.locked_on(with_lock(arena(), 0x10008105)), True)
+
+    def test_no_target_is_not_locked_on(self):
+        self.assertIs(self.locked_on(with_lock(arena(), memory.NO_LOCK_TARGET)), False)
+
+    def test_a_lock_on_another_character_is_not_locked_on(self):
+        self.assertIs(self.locked_on(with_lock(arena(), 0x10008106)), False)
+
+    def test_an_unreadable_manager_is_none_and_the_rest_of_the_snapshot_stands(self):
+        snapshot = source(arena(), boss=memory.GENICHIRO).read()
+        self.assertIsNone(snapshot.locked_on)
+        self.assertEqual(snapshot.boss_hp, 9207)
+        kernel = with_lock(arena(), 0x10008105)
+        kernel.put(BASE + memory.LOCK_TGT_MAN_RVA, struct.pack("<Q", 0))
+        self.assertIsNone(self.locked_on(kernel))
+
+    def test_without_the_boss_there_is_no_answer(self):
+        kernel = with_lock(FakeKernel(), 0x10008105)
+        self.assertIsNone(self.locked_on(kernel))
+
+    def test_a_candidate_lock_route_never_reaches_a_snapshot(self):
+        status = dict(memory.STATUS, lock_on="candidate")
+        self.assertIsNone(self.locked_on(with_lock(arena(), 0x10008105), status=status))
+
+
+ITEMS, ITEM_ENTRIES = 0x7FF400800000, 0x7FF400810000
+# Entries as read from the live game on 2026-11-27: handle, item ID, quantity, other.
+LIVE_ITEMS = ((0x9080002C, 0x10018E70, 1, 0xFFFFF111), (0xB0000BB8, 0x40000BB8, 3, 0x3E8112),
+              (0xB0000DB6, 0x40000DB6, 10, 0x5B4113))
+
+
+def with_items(kernel, entries=LIVE_ITEMS, count=None):
+    """Map the item list behind the GameData root."""
+    with_game_data(kernel)
+    kernel.put(GAME_DATA + memory.GAME_DATA_ITEMS, struct.pack("<Q", ITEMS))
+    kernel.put(ITEMS, bytes(0x1100))
+    kernel.put(ITEMS + memory.ITEMS_ENTRIES, struct.pack("<Q", ITEM_ENTRIES))
+    kernel.put(ITEMS + memory.ITEMS_COUNT,
+               struct.pack("<i", len(entries) if count is None else count))
+    kernel.put(ITEM_ENTRIES, b"".join(struct.pack("<IIiI", *entry) for entry in entries))
+    return kernel
+
+
+class GourdTests(SimulatedMemoryCase):
+    def test_the_quantity_of_the_gourd_entry_is_the_charge_count(self):
+        self.assertEqual(source(with_items(FakeKernel())).read().gourds, 3)
+
+    def test_the_entry_is_found_again_after_it_moves(self):
+        kernel = with_items(FakeKernel())
+        reader = source(kernel)
+        self.assertEqual(reader.read().gourds, 3)
+        with_items(kernel, entries=(LIVE_ITEMS[1][:2] + (7, 0),) + LIVE_ITEMS[:1] + LIVE_ITEMS[2:])
+        self.assertEqual(reader.read().gourds, 7)
+        self.assertEqual(reader.read().gourds, 7)
+
+    def test_the_remembered_entry_is_read_alone(self):
+        kernel = with_items(FakeKernel())
+        reader = source(kernel, status=dict(ONLY_HP, gourds="live"))
+        reader.read()
+        before = kernel.calls
+        reader.read()
+        first_calls = kernel.calls - before
+        kernel.put(ITEMS + memory.ITEMS_COUNT, struct.pack("<i", -1))    # not looked at again
+        self.assertEqual(reader.read().gourds, 3)
+        self.assertEqual(kernel.calls - before, 2 * first_calls)
+
+    def test_no_gourd_entry_is_none(self):
+        kernel = with_items(FakeKernel(), entries=LIVE_ITEMS[:1] + LIVE_ITEMS[2:])
+        snapshot = source(kernel).read()
+        self.assertIsNone(snapshot.gourds)
+        self.assertTrue(snapshot.valid)
+
+    def test_an_entry_beyond_the_count_is_not_used(self):
+        self.assertIsNone(source(with_items(FakeKernel(), count=1)).read().gourds)
+
+    def test_an_implausible_count_or_quantity_is_none(self):
+        for count in (0, -5, memory.MAX_ITEM_ENTRIES + 1):
+            self.assertIsNone(source(with_items(FakeKernel(), count=count)).read().gourds)
+        for quantity in (-1, 11, 9999):
+            entries = ((0xB0000BB8, memory.HEALING_GOURD_ITEM, quantity, 0),)
+            self.assertIsNone(source(with_items(FakeKernel(), entries=entries)).read().gourds)
+
+    def test_an_unreadable_list_is_none_and_the_rest_of_the_snapshot_stands(self):
+        kernel = with_items(FakeKernel())
+        kernel.put(ITEMS + memory.ITEMS_ENTRIES, struct.pack("<Q", 0))
+        snapshot = source(kernel).read()
+        self.assertIsNone(snapshot.gourds)
+        self.assertEqual(snapshot.player_hp, 320)
+        self.assertIsNone(source(with_game_data(FakeKernel())).read().gourds)
+
+    def test_a_candidate_route_never_reaches_a_snapshot(self):
+        status = dict(memory.STATUS, gourds="candidate")
+        self.assertIsNone(source(with_items(FakeKernel()), status=status).read().gourds)
+
+
 class BossTests(SimulatedMemoryCase):
     def assert_no_boss(self, snapshot, reason):
         self.assertTrue(snapshot.valid, "the player must stay valid without the boss")
