@@ -115,9 +115,31 @@ class RunControl(BaseCallback):
             self.model.save(os.path.join(self.folder, f"step_{self.model.num_timesteps}"))
 
 
+# Gentler settings for going on from a cloned policy, so the first batches do
+# not undo it: smaller steps, a tighter clip, and almost no push toward random
+# actions. The agent's numbers of 2026-11-27, not tuned.
+FINE_TUNE = dict(learning_rate=1e-4, ent_coef=0.002, clip_range=0.1)
+RESUMABLE = ("learning_rate", "ent_coef", "clip_range")
+
+
 def make_model(env, resume=None, seed=0, **overrides):
+    """A new model, or a saved one. With `resume`, only the settings in
+    `RESUMABLE` can be changed; the rest comes from the saved model."""
     if resume:
-        return PPO.load(resume, env=env, device="cpu")
+        unknown = set(overrides) - set(RESUMABLE)
+        if unknown:
+            raise ValueError(f"Cannot change {sorted(unknown)} of a saved model")
+        custom = {}
+        if "learning_rate" in overrides:
+            rate = overrides["learning_rate"]
+            custom.update(learning_rate=rate, lr_schedule=lambda _: rate)
+        if "clip_range" in overrides:
+            clip = overrides["clip_range"]
+            custom.update(clip_range=lambda _: clip)
+        model = PPO.load(resume, env=env, device="cpu", custom_objects=custom)
+        if "ent_coef" in overrides:
+            model.ent_coef = overrides["ent_coef"]
+        return model
     settings = dict(DEFAULTS, **overrides)
     return PPO("MlpPolicy", env, policy_kwargs=dict(net_arch=NET_ARCH), device="cpu",
                seed=seed, verbose=1, **settings)
@@ -148,6 +170,9 @@ def main():
     parser.add_argument("--hours", type=float, default=1.0, help="stop after this long")
     parser.add_argument("--steps", type=int, default=10_000_000, help="or after this many steps")
     parser.add_argument("--resume", default=None, help="a saved model to go on from")
+    parser.add_argument("--fine-tune", action="store_true",
+                        help="with --resume: use the gentler settings for going on from a "
+                             f"cloned policy ({FINE_TUNE})")
     parser.add_argument("--name", default=None, help="run folder under models/")
     parser.add_argument("--n-steps", type=int, default=DEFAULTS["n_steps"],
                         help="steps per batch (default 2048, about 3.4 minutes of fighting)")
@@ -156,6 +181,8 @@ def main():
     parser.add_argument("--keep-every", type=int, default=5, help="keep a copy every N batches")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    if args.fine_tune and not args.resume:
+        parser.error("--fine-tune needs --resume")
 
     try:
         reader = memory.Reader(args.pid)
@@ -184,9 +211,15 @@ def main():
             reset_timeout_s=60.0, focus_check=focus_check, reset_hook=hook,
             lock_keeper=reset.LockKeeper(), reward_fn=FightReward(),
             encounter=Encounter(deathblows_to_win=args.deathblows)), write)
-        model = make_model(env, resume=args.resume, seed=args.seed, n_steps=args.n_steps)
+        if args.resume:
+            model = make_model(env, resume=args.resume, **(FINE_TUNE if args.fine_tune else {}))
+        else:
+            model = make_model(env, seed=args.seed, n_steps=args.n_steps)
+        settings = {name: getattr(model, name) for name in DEFAULTS
+                    if isinstance(getattr(model, name), (int, float))}
+        settings["clip_range"] = model.clip_range(1.0)
         write({"kind": "meta", "time": time.time(), "pid": args.pid, "args": vars(args),
-               "schema": SCHEMA_VERSION, "settings": dict(DEFAULTS, n_steps=args.n_steps),
+               "schema": SCHEMA_VERSION, "settings": settings,
                "net_arch": NET_ARCH, "python": sys.version.split()[0]})
         print(f"Run folder: {folder}")
         print("Windows asked not to sleep or turn the display off during the run: "

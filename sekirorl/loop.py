@@ -50,30 +50,36 @@ class FightReward:
     - player HP lost: negative (`player_hp`); HP gained (healing) is positive.
     - boss HP lost: positive (`boss_hp`).
     - boss posture damage: positive (`boss_posture`). Raw posture counts down,
-      so a fall is damage. Posture the boss recovers is not taken back.
+      so a fall is damage. Posture the boss recovers is taken back at
+      `boss_posture_recovery` times that rate.
     - player posture damage: negative (`player_posture`). Recovered posture is not
       given back.
 
-    A deathblow shows as the boss's HP dropping to 1 and its posture to 0, so
-    it pays whatever was left of both bars. The refill after it (HP and
-    posture going back up) pays nothing, and neither does a change of a
-    maximum (the boss's bars are rescaled while it wakes up).
+    A deathblow shows as the boss's HP dropping to 1 (with his posture at or
+    near 0), so it pays whatever was left of the HP bar. The refill after it
+    pays nothing: HP going up never counts, and posture coming back by more
+    than `refill` of the bar in one step is the refill, not recovery (in the
+    user's recorded fights of 2026-11-27 the most he recovered in one step was
+    1.1% of the bar; the refill is the whole bar, one sample after the HP).
+    A change of a maximum pays nothing either (the boss's bars are rescaled
+    while it wakes up).
 
-    The boss's posture weighs twice his HP by default: the user's call on
-    2026-11-27, because posture is what wins this fight most of the time. The
-    user also asked for the player's posture to count, less than the player's
-    HP; a quarter is the agent's number.
-
-    Because recovered posture is not taken back, posture damage can be earned
-    again and again without the fight getting any nearer its end. The step
-    limit is the only bound on that.
+    The user's calls on 2026-11-27: the boss's posture weighs twice his HP,
+    because posture is what wins this fight most of the time; the player's
+    posture counts, less than the player's HP (a quarter is the agent's
+    number); and recovered boss posture is taken back at half, "because it's
+    very important that you keep the posture bar up". Before that last change
+    nothing was taken back, and letting him recover cost nothing.
     """
 
-    def __init__(self, player_hp=1.0, boss_hp=1.0, boss_posture=2.0, player_posture=0.25):
+    def __init__(self, player_hp=1.0, boss_hp=1.0, boss_posture=2.0, player_posture=0.25,
+                 boss_posture_recovery=0.5, refill=0.1):
         self.player_hp = player_hp
         self.boss_hp = boss_hp
         self.boss_posture = boss_posture
         self.player_posture = player_posture
+        self.boss_posture_recovery = boss_posture_recovery
+        self.refill = refill
 
     @staticmethod
     def _lost(previous, current, name, maximum_name):
@@ -89,8 +95,11 @@ class FightReward:
     def __call__(self, previous, current):
         reward = -self.player_hp * self._lost(previous, current, "player_hp", "player_max_hp")
         reward += self.boss_hp * max(0.0, self._lost(previous, current, "boss_hp", "boss_max_hp"))
-        reward += self.boss_posture * max(0.0, self._lost(previous, current, "boss_posture",
-                                                         "boss_max_posture"))
+        posture = self._lost(previous, current, "boss_posture", "boss_max_posture")
+        if posture >= 0.0:
+            reward += self.boss_posture * posture
+        elif -posture <= self.refill:
+            reward += self.boss_posture * self.boss_posture_recovery * posture
         reward -= self.player_posture * max(0.0, self._lost(previous, current, "player_posture",
                                                            "player_max_posture"))
         return reward

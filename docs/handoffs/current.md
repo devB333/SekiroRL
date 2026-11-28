@@ -1,10 +1,11 @@
 # Handoff: record the user's play (Stage 5), after the first PPO run from scratch
 
 Written: 2026-11-27, late evening. Status: **The PPO run from scratch is over and showed no
-learning. The user's own play is recorded: 17 fights, 12 wins, 54 minutes of fighting. A
-behaviour-cloned model (`models/clone-1/`) exists and has not played yet. The action set
-grew from 30 to 90 and the observation changed (gourds, fine animation time, new
-vocabulary). Everything up to here is committed and pushed (2026-11-27).**
+learning. The user's own play is recorded: 17 fights, 12 wins, 54 minutes of fighting.
+Behaviour-cloned models have played 8 fights on the game. **A PPO run from the copy
+(`models/ppo-from-clone-1/`, 8 hours, game PID 25896) was started on 2026-11-28 at about
+00:05 local time.** The action set grew from 30 to 90 and the observation changed (gourds,
+fine animation time, new vocabulary). Commits are pushed to `master` regularly.**
 
 How this folder works: `current.md` describes the task in progress. When a gate is approved,
 move this file to `done/` (named `YYYY-MM-DD-short-title.md`) and write a new `current.md`.
@@ -162,18 +163,68 @@ Three starts into one folder; `episodes.jsonl` has all of them.
   deathblows across fights, so a fight after one with a single deathblow went to the
   final cutscene one deathblow early.
 
+## The copies on the game, 2026-11-27 late (game PID 25896, controller off)
+
+Third game session of the day. Gourds read 9 at the idol, so the gourd route holds across
+a restart. Lock-on: one press per fight, at most one unlocked step.
+
+| Model | How actions are picked | Fights | Length | Boss HP left | Opening attack |
+|---|---|---|---|---|---|
+| `clone-1` (rare actions weighted up) | most likely | 5 | 153, 19, 153, 25, 21 s | 79, 100, 93, 100, 97% | hit 5 of 5 |
+| `clone-2` (no weighting) | drawn (`--sample`) | 3 | 40, 47, 60 s | 91, 93, 90% | 1 hit, 1 deflect, 1 block |
+
+For comparison, PPO from scratch: about 30 s and 96% left.
+
+- The user, watching `clone-1`: it heals instead of deflecting, is not aggressive enough,
+  and mistimes its attacks on openings. Its presses over the 5 fights: heal 2.1% of steps
+  (the user 0.1%), dodge 8% (2%), deflect 4% (8%), guard held 33% (47%); it emptied its
+  gourds. Cause: the weighting of rare actions in `clone.py` (`--class-power 0.5`).
+- `clone-2` was trained with `--class-power 0`. Drawn actions over its 3 fights: guard held
+  42%, nothing 39%, deflect 8%, attack 5%, dodge 3.6%, thrust 1%, heal 0.2%. The user
+  cancelled it after 3 fights to get to PPO and did not comment on how it looked.
+- First live use of sprint, heal, thrust and the diagonals by the agent: sent without
+  errors. Nobody checked on screen that each did what it should. Combat art and jump were
+  not chosen in these fights.
+- **Gourds read `None` for 305 samples in the `clone-1` fights**, after the count had
+  reached 1 and never 0. Guess, unchecked: with no charge left the entry has another item
+  ID. The observation then marks the count as unknown.
+- Logs: `logs/2026-11-27/run-234613.jsonl` (`clone-1`), `run-235654.jsonl` (`clone-2`).
+
+## Reward, changed on 2026-11-28 at the user's request
+
+Boss posture he recovers is now taken back at half the rate it was paid
+(`FightReward(boss_posture_recovery=0.5)`); the user: "it's very important that you keep
+the posture bar up". Posture coming back by more than 10% of the bar in one step is the
+refill after a deathblow and costs nothing. In the recordings his fastest recovery in a
+step was 1.1% of the bar, and the refill came one sample (16 ms) after the HP refill, so a
+step can see it alone. Also seen there: at a deathblow his HP goes to 1 while posture can
+still read 77 or 25, not 0; `encounter.py` then counts the deathblow at the refill, about
+2 s later, through its second rule.
+
+## The PPO run from the copy
+
+- Start model: `models/clone-3/` (as `clone-2`, value head refitted to the new reward).
+- Command: `python.exe -u -m sekirorl.train --pid 25896 --hours 8 --resume
+  models/clone-3/last.zip --fine-tune --name ppo-from-clone-1`.
+- `--fine-tune` (`train.FINE_TUNE`): learning rate 1e-4, entropy 0.002, clip 0.1 instead
+  of 3e-4, 0.01, 0.2, so the first batches do not undo the copy. The agent's numbers,
+  not tuned. The value head was fitted to the user's fights, which score far above what
+  the copy scores when it plays, so the first batches will see large negative surprises.
+- Read it with `python.exe logs/scratch/summarise_run.py models/ppo-from-clone-1`. Compare
+  fight length and boss HP left in the first batch with later ones; the copy's own 3
+  fights above are the baseline. `step_<n>.zip` every fifth batch allows going back.
+
 ## Next step, in order
 
-1. Still open with the user: the diagonals (added, can be reversed), the button-spam
-   penalty.
-2. To watch the copy play, the game has to be restarted with the controller **off** (the
-   virtual pad is ignored otherwise). Then the runner command above, first with five
-   fights while the user watches. This is also the first live use of sprint, heal, thrust
-   and combat art, and the first check of the gourd and lock-on readings in a third
-   session. Use `--model models/clone-1/last.zip`; try it with and without `--sample`.
-3. Then PPO from the copy: `python.exe -m sekirorl.train --pid <pid> --hours 3 --resume
-   models/<clone>/last.zip --name <run>`. Known risk: PPO can undo a cloned policy in its
-   first batches (plan S06-T03); compare fights before and after.
+1. When the run ends or stops: summarise it for the user (fights, length, boss HP left
+   early against late, deathblows, why it stopped). If it stopped on focus loss, restart
+   with `--resume models/ppo-from-clone-1/last.zip --fine-tune --name ppo-from-clone-1`.
+2. If PPO made it worse than the copy: go back to `clone-3`, and try a lower learning
+   rate or more recorded fights before anything else.
+3. Still open with the user: the diagonals (added on the agent's call), the button-spam
+   penalty, whether more fights should be recorded.
+4. Find out what the gourd entry looks like at zero charges.
+5. Commit after each finished piece (plan section C).
 
 ## How training works (`sekirorl/train.py`)
 
@@ -193,8 +244,8 @@ Three starts into one folder; `episodes.jsonl` has all of them.
 
 ## Known gaps
 
-- Never seen live by the step loop: a victory, a step-limit ending, the four new
-  actions, the B back-out, a model playing.
+- Never seen live by the step loop: a victory, a step-limit ending, the B back-out,
+  the combat art.
 - The labeller's rules are the agent's own guesses at what matters: a hold of 0.3 s or
   more is a sprint or a thrust, a stick under 0.35 is "stay", more than 22.5 degrees off
   a direction is flagged. They have not been looked at against real play.

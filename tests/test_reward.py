@@ -32,8 +32,23 @@ class FightRewardTests(unittest.TestCase):
         same_share = FightReward()(snap(), snap(boss_hp=9887 - 989, boss_posture=4083 - 408))
         self.assertAlmostEqual(same_share, 989 / 9887 + 2.0 * 408 / 4083)
 
-    def test_posture_the_boss_recovers_is_not_taken_back(self):
-        self.assertEqual(FightReward()(snap(boss_posture=3924), snap(boss_posture=4083)), 0.0)
+    def test_posture_the_boss_recovers_is_taken_back_at_half(self):
+        """The user's call on 2026-11-27. 44 of 4083 was his fastest recovery in one step."""
+        recovered = FightReward()(snap(boss_posture=3924), snap(boss_posture=3968))
+        self.assertAlmostEqual(recovered, -0.5 * 2.0 * 44 / 4083)
+        dealt = FightReward()(snap(boss_posture=3968), snap(boss_posture=3924))
+        self.assertAlmostEqual(recovered, -dealt / 2)
+        none = FightReward(boss_posture_recovery=0.0)
+        self.assertEqual(none(snap(boss_posture=3924), snap(boss_posture=3968)), 0.0)
+
+    def test_posture_coming_back_in_one_jump_is_a_refill_and_costs_nothing(self):
+        """As recorded: HP refills in one sample and posture in the next, so a
+        step can see the posture refill alone."""
+        self.assertEqual(FightReward()(snap(boss_posture=0), snap()), 0.0)
+        self.assertEqual(FightReward()(snap(boss_posture=77), snap()), 0.0)
+        self.assertEqual(FightReward()(snap(boss_posture=3176), snap()), 0.0)   # 22% at once
+        just_under = FightReward()(snap(boss_posture=4083 - 400), snap())
+        self.assertAlmostEqual(just_under, -0.5 * 2.0 * 400 / 4083)
 
     def test_a_deathblow_pays_what_was_left_of_both_bars(self):
         before = snap(boss_hp=4787, boss_posture=1021)

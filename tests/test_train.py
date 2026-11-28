@@ -54,6 +54,27 @@ class TrainTests(unittest.TestCase):
             train.train(again, folder, total_steps=64, out=self.lines.append)
             self.assertEqual(again.num_timesteps, 256 + 64)
 
+    def test_a_saved_model_can_be_resumed_with_gentler_settings(self):
+        model = train.make_model(self.env, n_steps=64, batch_size=32, n_epochs=1)
+        model.verbose = 0
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "last")
+            model.save(path)
+            same = train.make_model(self.env, resume=path + ".zip")
+            self.assertEqual((same.learning_rate, same.ent_coef, same.clip_range(1.0)),
+                             (3e-4, 0.01, 0.2))
+            gentle = train.make_model(self.env, resume=path + ".zip", **train.FINE_TUNE)
+            gentle.verbose = 0
+            self.assertEqual((gentle.learning_rate, gentle.ent_coef), (1e-4, 0.002))
+            self.assertEqual((gentle.lr_schedule(1.0), gentle.lr_schedule(0.1)), (1e-4, 1e-4))
+            self.assertEqual(gentle.clip_range(0.5), 0.1)
+            self.assertEqual(gentle.n_steps, 64)
+            self.assertEqual(train.train(gentle, folder, total_steps=64, out=self.lines.append),
+                             "finished")
+            self.assertEqual(gentle.policy.optimizer.param_groups[0]["lr"], 1e-4)
+            with self.assertRaises(ValueError):
+                train.make_model(self.env, resume=path + ".zip", n_steps=128)
+
     def test_the_run_stops_when_the_time_is_up_and_still_saves(self):
         model = train.make_model(self.env, n_steps=64, batch_size=32, n_epochs=1)
         model.verbose = 0
