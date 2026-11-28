@@ -109,10 +109,13 @@ def freeze_actions(model, frozen):
 class RunControl(BaseCallback):
     """Saves after every batch and stops the run when the time is up.
 
-    For the first `value_warmup` batches only the value head learns. A cloned
-    policy comes with a value head fitted to the user's fights, which score
-    far above its own; on 2026-11-28 PPO started from one got worse within
-    two batches (fights 1-5 averaged -0.59, fights 6-12 -1.14).
+    For the first `value_warmup` batches only the value head learns, so the
+    policy plays unchanged. Its use so far is as a baseline: on 2026-11-28
+    three such batches gave 17 fights of the cloned policy alone (mean reward
+    -1.12). It was written in the belief that PPO had damaged a cloned policy
+    in its first two batches; those 17 fights showed that the earlier drop
+    (-0.59 over 5 fights, then -1.11 over 8) was chance, and the logged value
+    loss (0.03) showed the cloned value head was not far off to begin with.
     """
 
     def __init__(self, folder, deadline=None, keep_every=5, now=time.time, value_warmup=0):
