@@ -207,21 +207,24 @@ Start model for both: `models/clone-3/` (as `clone-2`, value head refitted to th
 reward). `--fine-tune` (`train.FINE_TUNE`): learning rate 1e-4, entropy 0.002, clip 0.1
 instead of 3e-4, 0.01, 0.2. The agent's numbers, not tuned.
 
-- **`models/ppo-from-clone-1/`, stopped by the agent after 13 fights.** Reward per
-  fight: -0.42, -0.83, -0.76, -0.77, -0.17 (mean -0.59) in the first two batches, then
-  -1.08, -1.09, -0.93, -1.21, -1.27, -1.16, -1.24, -0.92 (mean -1.11) after two updates.
-  Each update was small (KL 0.0025, 10% of steps clipped) and the value head explained
-  nothing (explained variance -0.39, -0.16). The agent's reading, not proven on 13
-  fights: the value head came from the user's fights, which score about +8, while the
-  copy scores about -0.7, so every step looked like a loss and the updates were noise.
+- **`models/ppo-from-clone-1/`, stopped by the agent after 13 fights, on a wrong
+  reading.** Reward per fight: -0.42, -0.83, -0.76, -0.77, -0.17 (mean -0.59) in the
+  first two batches, then -1.08, -1.09, -0.93, -1.21, -1.27, -1.16, -1.24, -0.92 (mean
+  -1.11) after two updates. The agent took this for PPO damaging the copy and blamed the
+  value head. **Both were wrong**: see the baseline below, and the logged value loss was
+  0.03 from the first update on (returns are discounted with gamma 0.995, so the value
+  learned from the user's fights is about +0.5, not their undiscounted +8). The user was
+  told the wrong explanation at length on Discord and then the correction.
 - **`models/ppo-from-clone-2/`, running.** Same, with `--value-warmup 3`: for the first
   three batches only the value head learns (`train.freeze_actions`), then everything.
   Command: `python.exe -u -m sekirorl.train --pid 25896 --hours 8 --resume
   models/clone-3/last.zip --fine-tune --value-warmup 3 --name ppo-from-clone-2`.
   The first reset of this run failed once ("still 'off_mark' after 6 s", right after the
   previous run was killed mid-reset) and the retry worked.
-- The first three batches of this run are the copy playing unchanged: use their fights
-  as the copy's baseline (the earlier one is only 3 fights).
+- **Baseline of the copy (`clone-3`, actions drawn, new reward), from the three warm-up
+  batches: 17 fights, mean reward -1.12 (from -1.63 to -0.49), mean length 45 s, boss HP
+  left 92% on average.** Fights 18 onward are PPO's. Judge it on 15 fights or more at a
+  time; 5 fights of this policy can average anywhere from -0.6 to -1.3.
 - Read it with `python.exe logs/scratch/summarise_run.py models/ppo-from-clone-2`.
   `step_<n>.zip` every fifth batch allows going back.
 - If it stops on focus loss, resume with `--resume models/ppo-from-clone-2/last.zip
