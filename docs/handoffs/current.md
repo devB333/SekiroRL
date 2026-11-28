@@ -231,6 +231,19 @@ instead of 3e-4, 0.01, 0.2. The agent's numbers, not tuned.
   --fine-tune --name ppo-from-clone-2` and **no** `--value-warmup` (unless it stopped
   inside the first three batches).
 
+## The user's plan for the reward (2026-11-28)
+
+"Wait for a bit until it gets a successful record majority of the time but then optimize
+for speed." So: no change to the reward until the agent wins most fights (two deathblows).
+Then add a cost per second of fight (or another reward for faster wins); nothing is
+written for it. The button-spam penalty from earlier is still open and was not raised
+again.
+
+Progress of `ppo-from-clone-2` at 2 hours: mean reward per fight in groups of 17 went
+-1.12 (the copy), -0.95, -0.88, -0.74, then +0.03 over the next 5; fights lengthened from
+45 s to about 100 s; **two fights reached the first deathblow** (rewards +2.09 and +2.00),
+the first the agent has ever landed. The user saw one on screen.
+
 ## Next step, in order
 
 1. When the run ends or stops: summarise it for the user (fights, length, boss HP left
