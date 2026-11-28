@@ -246,6 +246,13 @@ the first the agent has ever landed. The user saw one on screen.
 
 ## Next step, in order
 
+0. **The user asked for 6 more hours of PPO after the 8-hour run ends** (about 08:30
+   local on 2026-11-28). As soon as it ends: `python.exe -u -m sekirorl.train --pid 25896
+   --hours 6 --resume models/ppo-from-clone-2/last.zip --fine-tune --name
+   ppo-from-clone-2` (no `--value-warmup`). At 6 h 40 min the run had 228 fights, 148,000
+   steps, 13 fights with a first deathblow, no victory, mean reward around 0 over the
+   last 36 fights against -1.12 for the copy; best stretch +0.35 (fights 118-142).
+
 1. When the run ends or stops: summarise it for the user (fights, length, boss HP left
    early against late, deathblows, why it stopped). Batches 1 to 3 are the baseline.
 2. If PPO made it worse than the copy: go back to `clone-3`, and try a lower learning
