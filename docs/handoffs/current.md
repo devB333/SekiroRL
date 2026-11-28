@@ -3,8 +3,8 @@
 Written: 2026-11-27, late evening. Status: **The PPO run from scratch is over and showed no
 learning. The user's own play is recorded: 17 fights, 12 wins, 54 minutes of fighting.
 Behaviour-cloned models have played 8 fights on the game. **A PPO run from the copy
-(`models/ppo-from-clone-1/`, 8 hours, game PID 25896) was started on 2026-11-28 at about
-00:05 local time.** The action set grew from 30 to 90 and the observation changed (gourds,
+(`models/ppo-from-clone-2/`, 8 hours, game PID 25896) was started on 2026-11-28 at about
+00:30 local time.** The action set grew from 30 to 90 and the observation changed (gourds,
 fine animation time, new vocabulary). Commits are pushed to `master` regularly.**
 
 How this folder works: `current.md` describes the task in progress. When a gate is approved,
@@ -201,24 +201,37 @@ step can see it alone. Also seen there: at a deathblow his HP goes to 1 while po
 still read 77 or 25, not 0; `encounter.py` then counts the deathblow at the refill, about
 2 s later, through its second rule.
 
-## The PPO run from the copy
+## The PPO runs from the copy
 
-- Start model: `models/clone-3/` (as `clone-2`, value head refitted to the new reward).
-- Command: `python.exe -u -m sekirorl.train --pid 25896 --hours 8 --resume
-  models/clone-3/last.zip --fine-tune --name ppo-from-clone-1`.
-- `--fine-tune` (`train.FINE_TUNE`): learning rate 1e-4, entropy 0.002, clip 0.1 instead
-  of 3e-4, 0.01, 0.2, so the first batches do not undo the copy. The agent's numbers,
-  not tuned. The value head was fitted to the user's fights, which score far above what
-  the copy scores when it plays, so the first batches will see large negative surprises.
-- Read it with `python.exe logs/scratch/summarise_run.py models/ppo-from-clone-1`. Compare
-  fight length and boss HP left in the first batch with later ones; the copy's own 3
-  fights above are the baseline. `step_<n>.zip` every fifth batch allows going back.
+Start model for both: `models/clone-3/` (as `clone-2`, value head refitted to the new
+reward). `--fine-tune` (`train.FINE_TUNE`): learning rate 1e-4, entropy 0.002, clip 0.1
+instead of 3e-4, 0.01, 0.2. The agent's numbers, not tuned.
+
+- **`models/ppo-from-clone-1/`, stopped by the agent after 13 fights.** Reward per
+  fight: -0.42, -0.83, -0.76, -0.77, -0.17 (mean -0.59) in the first two batches, then
+  -1.08, -1.09, -0.93, -1.21, -1.27, -1.16, -1.24, -0.92 (mean -1.11) after two updates.
+  Each update was small (KL 0.0025, 10% of steps clipped) and the value head explained
+  nothing (explained variance -0.39, -0.16). The agent's reading, not proven on 13
+  fights: the value head came from the user's fights, which score about +8, while the
+  copy scores about -0.7, so every step looked like a loss and the updates were noise.
+- **`models/ppo-from-clone-2/`, running.** Same, with `--value-warmup 3`: for the first
+  three batches only the value head learns (`train.freeze_actions`), then everything.
+  Command: `python.exe -u -m sekirorl.train --pid 25896 --hours 8 --resume
+  models/clone-3/last.zip --fine-tune --value-warmup 3 --name ppo-from-clone-2`.
+  The first reset of this run failed once ("still 'off_mark' after 6 s", right after the
+  previous run was killed mid-reset) and the retry worked.
+- The first three batches of this run are the copy playing unchanged: use their fights
+  as the copy's baseline (the earlier one is only 3 fights).
+- Read it with `python.exe logs/scratch/summarise_run.py models/ppo-from-clone-2`.
+  `step_<n>.zip` every fifth batch allows going back.
+- If it stops on focus loss, resume with `--resume models/ppo-from-clone-2/last.zip
+  --fine-tune --name ppo-from-clone-2` and **no** `--value-warmup` (unless it stopped
+  inside the first three batches).
 
 ## Next step, in order
 
 1. When the run ends or stops: summarise it for the user (fights, length, boss HP left
-   early against late, deathblows, why it stopped). If it stopped on focus loss, restart
-   with `--resume models/ppo-from-clone-1/last.zip --fine-tune --name ppo-from-clone-1`.
+   early against late, deathblows, why it stopped). Batches 1 to 3 are the baseline.
 2. If PPO made it worse than the copy: go back to `clone-3`, and try a lower learning
    rate or more recorded fights before anything else.
 3. Still open with the user: the diagonals (added on the agent's call), the button-spam

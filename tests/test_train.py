@@ -75,6 +75,41 @@ class TrainTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 train.make_model(self.env, resume=path + ".zip", n_steps=128)
 
+    def test_during_the_value_warmup_only_the_value_head_learns(self):
+        model = train.make_model(self.env, n_steps=64, batch_size=32, n_epochs=2)
+        model.verbose = 0
+
+        def parts():
+            state = {name: value.clone() for name, value in model.policy.state_dict().items()}
+            acting = {n: v for n, v in state.items() if n.startswith(train.ACTION_PARTS)}
+            valuing = {n: v for n, v in state.items() if not n.startswith(train.ACTION_PARTS)}
+            self.assertTrue(acting and valuing)
+            return acting, valuing
+
+        def changed(before, after):
+            return any(not (before[name] == after[name]).all() for name in before)
+
+        acting, valuing = parts()
+        with tempfile.TemporaryDirectory() as folder:
+            train.train(model, folder, total_steps=128, out=self.lines.append, value_warmup=2)
+            acting_2, valuing_2 = parts()
+            self.assertFalse(changed(acting, acting_2))
+            self.assertTrue(changed(valuing, valuing_2))
+            # A third batch in the same run is past the warm-up.
+            train.train(model, folder, total_steps=64, out=self.lines.append, value_warmup=0)
+            self.assertTrue(changed(acting_2, parts()[0]))
+
+    def test_the_action_part_learns_again_after_the_warmup(self):
+        model = train.make_model(self.env, n_steps=64, batch_size=32, n_epochs=2)
+        model.verbose = 0
+        before = {name: value.clone() for name, value in model.policy.state_dict().items()
+                  if name.startswith(train.ACTION_PARTS)}
+        with tempfile.TemporaryDirectory() as folder:
+            train.train(model, folder, total_steps=192, out=self.lines.append, value_warmup=2)
+        after = model.policy.state_dict()
+        self.assertTrue(any(not (before[name] == after[name]).all() for name in before))
+        self.assertTrue(all(parameter.requires_grad for parameter in model.policy.parameters()))
+
     def test_the_run_stops_when_the_time_is_up_and_still_saves(self):
         model = train.make_model(self.env, n_steps=64, batch_size=32, n_epochs=1)
         model.verbose = 0

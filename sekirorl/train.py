@@ -94,22 +94,46 @@ class EpisodeLog(gym.Wrapper):
         return observation, reward, terminated, truncated, info
 
 
-class RunControl(BaseCallback):
-    """Saves after every batch and stops the run when the time is up."""
+# The parts of the SB3 policy that choose the action; the value head is the rest.
+ACTION_PARTS = ("mlp_extractor.policy_net.", "action_net.")
 
-    def __init__(self, folder, deadline=None, keep_every=5, now=time.time):
+
+def freeze_actions(model, frozen):
+    """Stop (or resume) learning in the part of the network that picks the
+    action, leaving the value head free to learn."""
+    for name, parameter in model.policy.named_parameters():
+        if name.startswith(ACTION_PARTS):
+            parameter.requires_grad_(not frozen)
+
+
+class RunControl(BaseCallback):
+    """Saves after every batch and stops the run when the time is up.
+
+    For the first `value_warmup` batches only the value head learns. A cloned
+    policy comes with a value head fitted to the user's fights, which score
+    far above its own; on 2026-11-28 PPO started from one got worse within
+    two batches (fights 1-5 averaged -0.59, fights 6-12 -1.14).
+    """
+
+    def __init__(self, folder, deadline=None, keep_every=5, now=time.time, value_warmup=0):
         super().__init__()
         self.folder = folder
         self.deadline = deadline
         self.keep_every = keep_every
         self.now = now
+        self.value_warmup = value_warmup
         self.batches = 0
+
+    def _on_training_start(self):
+        freeze_actions(self.model, self.value_warmup > 0)
 
     def _on_step(self):
         return self.deadline is None or self.now() < self.deadline
 
     def _on_rollout_end(self):
-        self.batches += 1
+        self.batches += 1               # the update for this batch comes right after
+        if self.value_warmup and self.batches == self.value_warmup + 1:
+            freeze_actions(self.model, False)
         self.model.save(os.path.join(self.folder, "last"))
         if self.keep_every and self.batches % self.keep_every == 0:
             self.model.save(os.path.join(self.folder, f"step_{self.model.num_timesteps}"))
@@ -145,10 +169,11 @@ def make_model(env, resume=None, seed=0, **overrides):
                seed=seed, verbose=1, **settings)
 
 
-def train(model, folder, total_steps, deadline=None, keep_every=5, out=print):
+def train(model, folder, total_steps, deadline=None, keep_every=5, out=print, value_warmup=0):
     """Run `model.learn` and always leave `last.zip` behind. Returns why it stopped."""
     os.makedirs(folder, exist_ok=True)
-    control = RunControl(folder, deadline=deadline, keep_every=keep_every)
+    control = RunControl(folder, deadline=deadline, keep_every=keep_every,
+                         value_warmup=value_warmup)
     why = "finished"
     try:
         model.learn(total_timesteps=total_steps, callback=control, reset_num_timesteps=False)
@@ -158,6 +183,7 @@ def train(model, folder, total_steps, deadline=None, keep_every=5, out=print):
         why = f"reset failed: {error}"
     except KeyboardInterrupt:
         why = "interrupted"
+    freeze_actions(model, False)
     model.save(os.path.join(folder, "last"))
     out(f"Stopped: {why}. {model.num_timesteps} steps in total; model saved in {folder}")
     return why
@@ -180,6 +206,9 @@ def main():
     parser.add_argument("--max-steps", type=int, default=3000, help="step limit of one fight")
     parser.add_argument("--keep-every", type=int, default=5, help="keep a copy every N batches")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--value-warmup", type=int, default=0, metavar="BATCHES",
+                        help="for this many batches only the value head learns (use when "
+                             "starting from a cloned policy; 0 when resuming a PPO run)")
     args = parser.parse_args()
     if args.fine_tune and not args.resume:
         parser.error("--fine-tune needs --resume")
@@ -227,7 +256,7 @@ def main():
         if not wait_for_focus(focus_check):
             raise ResetFailed("the game window was not in front; nothing was sent")
         why = train(model, folder, args.steps, deadline=time.time() + args.hours * 3600,
-                    keep_every=args.keep_every)
+                    keep_every=args.keep_every, value_warmup=args.value_warmup)
         write({"kind": "end", "time": time.time(), "why": why, "steps": model.num_timesteps,
                "reset_failures": hook.failures})
     except ResetFailed as error:
